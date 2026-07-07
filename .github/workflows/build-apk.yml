@@ -1,0 +1,95 @@
+name: Build UUDS Parts Inspection APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Scaffold native Android project
+        run: flutter create --platforms=android --org com.uudsaero --project-name uuds_parts_app scaffold_tmp
+
+      - name: Copy app source into scaffold
+        run: |
+          rm -rf scaffold_tmp/lib
+          cp -r source/lib scaffold_tmp/lib
+          rm -rf scaffold_tmp/assets
+          cp -r source/assets scaffold_tmp/assets
+          cp source/pubspec.yaml scaffold_tmp/pubspec.yaml
+
+      - name: Add camera permission + app label
+        run: |
+          MANIFEST=scaffold_tmp/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <application#' "$MANIFEST"
+          sed -i 's/android:label="[^"]*"/android:label="UUDS Parts Inspection"/' "$MANIFEST"
+
+      - name: Force compileSdk/targetSdk 36 (fixes plugin AAR metadata requirements)
+        run: |
+          for GRADLE_FILE in scaffold_tmp/android/app/build.gradle.kts scaffold_tmp/android/app/build.gradle; do
+            if [ -f "$GRADLE_FILE" ]; then
+              sed -i 's/flutter\.compileSdkVersion/36/' "$GRADLE_FILE"
+              sed -i 's/flutter\.targetSdkVersion/36/' "$GRADLE_FILE"
+              sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/' "$GRADLE_FILE"
+              sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/' "$GRADLE_FILE"
+            fi
+          done
+
+      - name: Get packages
+        working-directory: scaffold_tmp
+        run: flutter pub get
+
+      - name: Force compileSdk 36 on every downloaded plugin (fixes AAR metadata requirements)
+        run: |
+          find "$HOME/.pub-cache" -path "*/android/build.gradle*" -print0 2>/dev/null | \
+          xargs -0 -r sed -i \
+            -e 's/compileSdkVersion flutter\.compileSdkVersion/compileSdkVersion 36/' \
+            -e 's/compileSdk = flutter\.compileSdkVersion/compileSdk = 36/' \
+            -e 's/compileSdk flutter\.compileSdkVersion/compileSdk 36/' \
+            -e 's/compileSdkVersion [0-9][0-9]*/compileSdkVersion 36/' \
+            -e 's/compileSdk = [0-9][0-9]*/compileSdk = 36/'
+
+      - name: Generate app icon from logo
+        working-directory: scaffold_tmp
+        run: dart run flutter_launcher_icons
+
+      - name: Add ProGuard rules for ML Kit text recognition (fixes runtime NullPointerException)
+        run: |
+          PROGUARD_FILE=scaffold_tmp/android/app/proguard-rules.pro
+          touch "$PROGUARD_FILE"
+          cat >> "$PROGUARD_FILE" << 'EOF'
+
+          # Keep all ML Kit vision/text classes so R8 doesn't strip anything
+          # the plugin needs reflectively at runtime (this fixes a
+          # NullPointerException crash when the recognizer initializes).
+          -keep class com.google.mlkit.** { *; }
+          -keep class com.google_mlkit_text_recognition.** { *; }
+          -keep class com.google.android.gms.internal.mlkit_vision_text_common.** { *; }
+          -dontwarn com.google.mlkit.**
+          EOF
+
+      - name: Build release APK
+        working-directory: scaffold_tmp
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UUDS-Parts-Inspection-APK
+          path: scaffold_tmp/build/app/outputs/flutter-apk/app-release.apk
