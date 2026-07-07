@@ -15,8 +15,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late final Animation<double> _fadeIn;
   late final Animation<double> _scaleIn;
 
-  late final AnimationController _planeController;
-  late final Animation<double> _planeProgress;
+  late final AnimationController _dotsController;
+  int _activeDot = 0;
+
+  static const int _totalDots = 5;
+  static const int _waitSeconds = 5;
 
   @override
   void initState() {
@@ -28,11 +31,19 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
     _textController.forward();
 
-    _planeController = AnimationController(vsync: this, duration: const Duration(milliseconds: 3000));
-    _planeProgress = CurvedAnimation(parent: _planeController, curve: Curves.easeInOut);
-    _planeController.forward();
+    // 5 dots lighting up one by one across the 5 second wait.
+    _dotsController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _waitSeconds),
+    )..addListener(() {
+        final newDot = (_dotsController.value * _totalDots).floor().clamp(0, _totalDots - 1);
+        if (newDot != _activeDot) {
+          setState(() => _activeDot = newDot);
+        }
+      });
+    _dotsController.forward();
 
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: _waitSeconds), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(fadeSlideRoute(const HomeScreen()));
       }
@@ -42,149 +53,88 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   void dispose() {
     _textController.dispose();
-    _planeController.dispose();
+    _dotsController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
     return Scaffold(
-      backgroundColor: kPrimary,
-      body: Stack(
-        children: [
-          // Takeoff animation: plane rises and moves left -> right during the 3s wait.
-          AnimatedBuilder(
-            animation: _planeProgress,
-            builder: (context, child) {
-              final t = _planeProgress.value;
-              final dx = -0.25 + t * 1.5; // fraction of width, off-left to off-right
-              final dy = 0.30 - (t * 0.55); // rises as it moves across (takeoff arc)
-              final nose = -0.45 + (t * 0.30); // slight nose-up rotation while climbing
-              return Positioned(
-                left: size.width * dx,
-                top: size.height * dy,
-                child: Transform.rotate(
-                  angle: nose,
-                  child: const _JetSilhouette(size: 78),
-                ),
-              );
-            },
-          ),
-          Center(
-            child: FadeTransition(
-              opacity: _fadeIn,
-              child: ScaleTransition(
-                scale: _scaleIn,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 36),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 100,
-                        height: 100,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Image.asset('assets/branding/logo.png', fit: BoxFit.contain),
-                      ),
-                      const SizedBox(height: 26),
-                      const Text(
-                        'UUDS Aircraft Parts\nReceiving and Dispatching Records',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          height: 1.3,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
+      backgroundColor: const Color(0xFFF3F4F6),
+      body: SafeArea(
+        child: FadeTransition(
+          opacity: _fadeIn,
+          child: ScaleTransition(
+            scale: _scaleIn,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Image.asset('assets/branding/splash_uuds_logo.png', height: 130, fit: BoxFit.contain),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'UUDS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kPrimary, fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: 1),
                   ),
-                ),
+                  const Text(
+                    'Aircraft Parts',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kPrimary, fontSize: 26, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Receiving & Despatching\nRecords',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF3A3A3A), fontSize: 19, fontWeight: FontWeight.w600, height: 1.3),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset('assets/branding/splash_a380.png', fit: BoxFit.contain),
+                        const SizedBox(height: 6),
+                        Image.asset('assets/branding/splash_b777.png', fit: BoxFit.contain),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 5-dot loading indicator - lights up progressively during the wait.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(_totalDots, (i) {
+                      final lit = i <= _activeDot;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: lit ? 12 : 8,
+                        height: lit ? 12 : 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: lit ? kPrimary : kPrimary.withOpacity(0.25),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1, color: Color(0xFFD8D8D8)),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Designed & Developed by Khurram Munir Basra',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF555555), fontSize: 12.5),
+                  ),
+                  const SizedBox(height: 10),
+                  Image.asset('assets/branding/splash_kmb_logo.png', height: 46, fit: BoxFit.contain),
+                  const SizedBox(height: 6),
+                ],
               ),
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 18,
-            child: FadeTransition(
-              opacity: _fadeIn,
-              child: const Text(
-                'Designed & Developed By Khurram Munir Basra',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54, fontSize: 11.5, letterSpacing: 0.4),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
-}
-
-/// A simple, generic widebody-jet silhouette drawn in code (no branded livery/logo).
-class _JetSilhouette extends StatelessWidget {
-  final double size;
-  const _JetSilhouette({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size * 0.55,
-      child: CustomPaint(painter: _JetPainter()),
-    );
-  }
-}
-
-class _JetPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final fill = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    // Fuselage
-    final fuselage = Path()
-      ..moveTo(w * 0.02, h * 0.55)
-      ..quadraticBezierTo(w * 0.05, h * 0.40, w * 0.20, h * 0.42)
-      ..lineTo(w * 0.82, h * 0.46)
-      ..quadraticBezierTo(w * 1.00, h * 0.48, w * 0.97, h * 0.56)
-      ..quadraticBezierTo(w * 0.80, h * 0.60, w * 0.20, h * 0.60)
-      ..quadraticBezierTo(w * 0.05, h * 0.62, w * 0.02, h * 0.55)
-      ..close();
-    canvas.drawPath(fuselage, fill);
-
-    // Main wing (swept back)
-    final wing = Path()
-      ..moveTo(w * 0.42, h * 0.55)
-      ..lineTo(w * 0.30, h * 1.0)
-      ..lineTo(w * 0.50, h * 1.0)
-      ..lineTo(w * 0.62, h * 0.55)
-      ..close();
-    canvas.drawPath(wing, fill);
-
-    // Tail wing
-    final tail = Path()
-      ..moveTo(w * 0.86, h * 0.47)
-      ..lineTo(w * 0.98, h * 0.10)
-      ..lineTo(w * 1.0, h * 0.14)
-      ..lineTo(w * 0.93, h * 0.49)
-      ..close();
-    canvas.drawPath(tail, fill);
-
-    // Nose tip highlight
-    canvas.drawCircle(Offset(w * 0.03, h * 0.52), h * 0.05, fill);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

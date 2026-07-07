@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
-import '../utils/backup_util.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/pressable_button.dart';
@@ -26,7 +26,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String? _selectedInspector; // null = All
   bool _loading = true;
   bool _exporting = false;
-  bool _backingUp = false;
+  bool _emailing = false;
   List<InspectionPhoto> _photos = [];
   List<Employee> _employees = [];
 
@@ -204,106 +204,83 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  Future<void> _backup() async {
-    final selection = await _showBackupSelectionDialog();
-    if (selection == null) return;
-    setState(() => _backingUp = true);
-    try {
-      final path = await BackupUtil.createSelectiveBackupAndShare(selection['aircraft']!, selection['locations']!);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup saved: $path')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
-    } finally {
-      if (mounted) setState(() => _backingUp = false);
+  /// Builds a plain-text email draft (subject + body) from the currently
+  /// filtered tagged data and opens it in the device's mail app (Outlook,
+  /// Gmail, etc. — whichever the user selects/has set as default).
+  Future<void> _sendEmail() async {
+    final tagged = _taggedPhotos;
+    if (tagged.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tagged data to email for the current filter.')),
+      );
+      return;
     }
-  }
 
-  Future<Map<String, Set<String>>?> _showBackupSelectionDialog() async {
-    final aircraftList = await DBHelper.instance.getAircraft();
-    final locationList = await DBHelper.instance.getPartLocations();
-    Set<String> selectedAircraft = aircraftList.map((a) => a.regNo).toSet();
-    Set<String> selectedLocations = locationList.map((l) => l.name).toSet();
+    setState(() => _emailing = true);
+    try {
+      final aircraftSet = tagged.map((p) => p.aircraftReg).toSet();
+      final typeSet = tagged.map((p) => p.inspectionType).toSet();
+      final dateFmt = DateFormat('dd-MMM-yyyy');
 
-    if (!mounted) return null;
-    return showDialog<Map<String, Set<String>>>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Select Backup Scope'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Aircraft', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextButton(
-                        onPressed: () => setDialogState(() {
-                          selectedAircraft =
-                              selectedAircraft.length == aircraftList.length ? {} : aircraftList.map((a) => a.regNo).toSet();
-                        }),
-                        child: const Text('Toggle All'),
-                      ),
-                    ],
-                  ),
-                  ...aircraftList.map((a) => CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(a.regNo),
-                        value: selectedAircraft.contains(a.regNo),
-                        onChanged: (v) => setDialogState(() {
-                          if (v == true) {
-                            selectedAircraft.add(a.regNo);
-                          } else {
-                            selectedAircraft.remove(a.regNo);
-                          }
-                        }),
-                      )),
-                  const Divider(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Part Locations', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextButton(
-                        onPressed: () => setDialogState(() {
-                          selectedLocations =
-                              selectedLocations.length == locationList.length ? {} : locationList.map((l) => l.name).toSet();
-                        }),
-                        child: const Text('Toggle All'),
-                      ),
-                    ],
-                  ),
-                  ...locationList.map((l) => CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(l.name),
-                        value: selectedLocations.contains(l.name),
-                        onChanged: (v) => setDialogState(() {
-                          if (v == true) {
-                            selectedLocations.add(l.name);
-                          } else {
-                            selectedLocations.remove(l.name);
-                          }
-                        }),
-                      )),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, {'aircraft': selectedAircraft, 'locations': selectedLocations}),
-              child: const Text('Backup'),
-            ),
-          ],
-        ),
-      ),
-    );
+      String dateLabel;
+      if (_range == null) {
+        dateLabel = dateFmt.format(DateTime.now());
+      } else if (_range!.start.year == _range!.end.year &&
+          _range!.start.month == _range!.end.month &&
+          _range!.start.day == _range!.end.day) {
+        dateLabel = dateFmt.format(_range!.start);
+      } else {
+        dateLabel = '${dateFmt.format(_range!.start)} to ${dateFmt.format(_range!.end)}';
+      }
+
+      String subject;
+      if (aircraftSet.length == 1 && typeSet.length == 1) {
+        final verb = typeSet.first == 'Receiving' ? 'RECEIVED' : 'DESPATCHED';
+        subject = '$verb AIRCRAFT PARTS FOR ${aircraftSet.first}  $dateLabel';
+      } else {
+        subject = 'UUDS AIRCRAFT PARTS REPORT  $dateLabel';
+      }
+
+      String pad(String s, int len) => s.length >= len ? '${s.substring(0, len - 1)} ' : s.padRight(len);
+
+      final buffer = StringBuffer();
+      buffer.writeln('Dear Team,');
+      buffer.writeln();
+      buffer.writeln(
+        'Please find below the list of aircraft parts recorded${_selectedInspector != null ? ' by $_selectedInspector' : ''} ($dateLabel).',
+      );
+      buffer.writeln();
+      buffer.writeln('${pad('DATE', 12)}${pad('A/C', 9)}${pad('PART NO', 14)}${pad('DESCRIPTION', 20)}${pad('LOCATION', 12)}${pad('QTY', 6)}UNIT');
+      buffer.writeln('-' * 85);
+      for (final p in tagged) {
+        final d = DateFormat('dd-MMM-yyyy').format(DateTime.parse(p.timestamp));
+        final loc = p.tagLocation.isNotEmpty ? p.tagLocation : p.partLocation;
+        buffer.writeln(
+          '${pad(d, 12)}${pad(p.aircraftReg, 9)}${pad(p.tagPartNo, 14)}${pad(p.tagDescription, 20)}${pad(loc, 12)}${pad(p.tagQty, 6)}EA',
+        );
+      }
+      buffer.writeln();
+      buffer.writeln('Regards,');
+      buffer.writeln(_selectedInspector ?? 'UUDS Aero DWC');
+      buffer.writeln('UUDS Aero DWC');
+
+      final uri = Uri(
+        scheme: 'mailto',
+        query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(buffer.toString())}',
+      );
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No email app found on this device.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create email: $e')));
+    } finally {
+      if (mounted) setState(() => _emailing = false);
+    }
   }
 
   Widget _topButton(String label, bool selected, VoidCallback onTap) {
@@ -460,7 +437,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: (_exporting || _backingUp)
+              child: (_exporting || _emailing)
                   ? const Center(child: CircularProgressIndicator())
                   : Row(
                       children: [
@@ -477,12 +454,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: PressableButton(
-                            icon: Icons.backup_rounded,
-                            label: 'Backup Data',
+                            icon: Icons.email_rounded,
+                            label: 'Send Email',
                             color: kPrimary,
                             height: 56,
                             fontSize: 14,
-                            onPressed: _backup,
+                            onPressed: rows.isEmpty ? () {} : _sendEmail,
                           ),
                         ),
                       ],

@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/backup_util.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -16,8 +18,19 @@ class GalleryScreen extends StatefulWidget {
 
 class _GalleryScreenState extends State<GalleryScreen> {
   List<InspectionPhoto> _photos = [];
+  List<Employee> _employees = [];
   bool _loading = true;
+  bool _backingUp = false;
   String _search = '';
+  String _storagePathLabel = '';
+
+  Map<String, String> get _idByName => {for (final e in _employees) e.name: e.idNumber};
+
+  String _idLabel(InspectionPhoto p) {
+    final id = _idByName[p.employeeName];
+    if (id != null && id.isNotEmpty) return 'UUDS-$id';
+    return p.employeeName;
+  }
 
   String _formatTimestamp(String iso) {
     try {
@@ -39,12 +52,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadStoragePath();
+  }
+
+  Future<void> _loadStoragePath() async {
+    final base = await getExternalStorageDirectory();
+    if (mounted && base != null) {
+      setState(() => _storagePathLabel = '${base.path}/UUDS_Aero_Photos');
+    }
   }
 
   Future<void> _load() async {
     final photos = await DBHelper.instance.getPhotos();
+    final employees = await DBHelper.instance.getEmployees();
     setState(() {
       _photos = photos;
+      _employees = employees;
       _loading = false;
     });
   }
@@ -75,6 +98,108 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
+  Future<void> _backup() async {
+    final selection = await _showBackupSelectionDialog();
+    if (selection == null) return;
+    setState(() => _backingUp = true);
+    try {
+      final path = await BackupUtil.createSelectiveBackupAndShare(selection['aircraft']!, selection['locations']!);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup saved: $path')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    } finally {
+      if (mounted) setState(() => _backingUp = false);
+    }
+  }
+
+  Future<Map<String, Set<String>>?> _showBackupSelectionDialog() async {
+    final aircraftList = await DBHelper.instance.getAircraft();
+    final locationList = await DBHelper.instance.getPartLocations();
+    Set<String> selectedAircraft = aircraftList.map((a) => a.regNo).toSet();
+    Set<String> selectedLocations = locationList.map((l) => l.name).toSet();
+
+    if (!mounted) return null;
+    return showDialog<Map<String, Set<String>>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Select Backup Scope'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Aircraft', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          selectedAircraft =
+                              selectedAircraft.length == aircraftList.length ? {} : aircraftList.map((a) => a.regNo).toSet();
+                        }),
+                        child: const Text('Toggle All'),
+                      ),
+                    ],
+                  ),
+                  ...aircraftList.map((a) => CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(a.regNo),
+                        value: selectedAircraft.contains(a.regNo),
+                        onChanged: (v) => setDialogState(() {
+                          if (v == true) {
+                            selectedAircraft.add(a.regNo);
+                          } else {
+                            selectedAircraft.remove(a.regNo);
+                          }
+                        }),
+                      )),
+                  const Divider(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Part Locations', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          selectedLocations =
+                              selectedLocations.length == locationList.length ? {} : locationList.map((l) => l.name).toSet();
+                        }),
+                        child: const Text('Toggle All'),
+                      ),
+                    ],
+                  ),
+                  ...locationList.map((l) => CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l.name),
+                        value: selectedLocations.contains(l.name),
+                        onChanged: (v) => setDialogState(() {
+                          if (v == true) {
+                            selectedLocations.add(l.name);
+                          } else {
+                            selectedLocations.remove(l.name);
+                          }
+                        }),
+                      )),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, {'aircraft': selectedAircraft, 'locations': selectedLocations}),
+              child: const Text('Backup'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // aircraftReg -> inspectionType -> partLocation -> photos
   Map<String, Map<String, Map<String, List<InspectionPhoto>>>> _buildTree() {
     final tree = <String, Map<String, Map<String, List<InspectionPhoto>>>>{};
@@ -99,7 +224,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final aircraftKeys = tree.keys.toList()..sort();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Photo Gallery')),
+      appBar: AppBar(
+        title: const Text('Photo Gallery'),
+        actions: [
+          _backingUp
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.backup_rounded),
+                  tooltip: 'Backup Data',
+                  onPressed: _backup,
+                ),
+        ],
+      ),
       bottomNavigationBar: const AppBottomNav(current: AppTab.gallery),
       body: SafeArea(
         child: Column(
@@ -178,7 +317,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                   final p = photos[gi];
                                                   return GestureDetector(
                                                     onTap: () => Navigator.of(context).push(
-                                                      fadeSlideRoute(PhotoViewerScreen(photo: p)),
+                                                      fadeSlideRoute(PhotoViewerScreen(
+                                                        photos: photos,
+                                                        initialIndex: gi,
+                                                        idByName: _idByName,
+                                                      )),
                                                     ).then((_) => _load()),
                                                     onLongPress: () => _deletePhoto(p),
                                                     child: ClipRRect(
@@ -189,6 +332,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                           File(p.filePath).existsSync()
                                                               ? Image.file(File(p.filePath), fit: BoxFit.cover)
                                                               : Container(color: Colors.grey[300], child: const Icon(Icons.broken_image)),
+                                                          Positioned(
+                                                            left: 0,
+                                                            right: 0,
+                                                            top: 0,
+                                                            child: Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                                              color: Colors.black.withOpacity(0.55),
+                                                              child: Text(
+                                                                _idLabel(p),
+                                                                textAlign: TextAlign.center,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w700),
+                                                              ),
+                                                            ),
+                                                          ),
                                                           Positioned(
                                                             left: 0,
                                                             right: 0,
@@ -229,6 +388,27 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           },
                         ),
             ),
+            // Footer: shows where all photos are stored on the device.
+            if (_storagePathLabel.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: kPrimary.withOpacity(0.06),
+                child: Row(
+                  children: [
+                    Icon(Icons.folder_open, size: 15, color: kPrimary.withOpacity(0.7)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Saved on device at: $_storagePathLabel',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10.5, color: kPrimary.withOpacity(0.8)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

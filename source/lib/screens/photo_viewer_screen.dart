@@ -4,11 +4,49 @@ import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 
-class PhotoViewerScreen extends StatelessWidget {
-  final InspectionPhoto photo;
-  const PhotoViewerScreen({super.key, required this.photo});
+class PhotoViewerScreen extends StatefulWidget {
+  final List<InspectionPhoto> photos;
+  final int initialIndex;
+  final Map<String, String> idByName;
+
+  const PhotoViewerScreen({
+    super.key,
+    required this.photos,
+    required this.initialIndex,
+    this.idByName = const {},
+  });
+
+  @override
+  State<PhotoViewerScreen> createState() => _PhotoViewerScreenState();
+}
+
+class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
+  late final PageController _pageController;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  InspectionPhoto get _current => widget.photos[_index];
+
+  String _idLabel(InspectionPhoto p) {
+    final id = widget.idByName[p.employeeName];
+    if (id != null && id.isNotEmpty) return 'UUDS-$id';
+    return p.employeeName;
+  }
 
   void _showInfo(BuildContext context) {
+    final photo = _current;
     showModalBottomSheet(
       context: context,
       builder: (ctx) => Padding(
@@ -20,13 +58,15 @@ class PhotoViewerScreen extends StatelessWidget {
             Text('Aircraft: ${photo.aircraftReg}', style: const TextStyle(fontWeight: FontWeight.w600)),
             Text('Type: ${photo.inspectionType}'),
             Text('Part Location: ${photo.partLocation}'),
-            Text('Inspector: ${photo.employeeName}'),
+            Text('Inspector: ${photo.employeeName} (${_idLabel(photo)})'),
             Text('Date: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.parse(photo.timestamp))}'),
             if (photo.remarks.isNotEmpty) Text('Remarks: ${photo.remarks}'),
             if (photo.tagPartNo.isNotEmpty) Text('Tag Part No.: ${photo.tagPartNo}'),
             if (photo.tagDescription.isNotEmpty) Text('Tag Description: ${photo.tagDescription}'),
             if (photo.tagLocation.isNotEmpty) Text('Tag Location: ${photo.tagLocation}'),
             if (photo.tagQty.isNotEmpty) Text('Tag Qty: ${photo.tagQty}'),
+            const SizedBox(height: 6),
+            Text('Saved at: ${File(photo.filePath).parent.path}', style: const TextStyle(fontSize: 11, color: Colors.black54)),
           ],
         ),
       ),
@@ -34,6 +74,7 @@ class PhotoViewerScreen extends StatelessWidget {
   }
 
   Future<void> _delete(BuildContext context) async {
+    final photo = _current;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -67,16 +108,86 @@ class PhotoViewerScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
+        title: Text(
+          '${_index + 1} / ${widget.photos.length}',
+          style: const TextStyle(fontSize: 14, color: Colors.white70),
+        ),
         actions: [
           IconButton(icon: const Icon(Icons.info_outline), onPressed: () => _showInfo(context)),
           IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(context)),
         ],
       ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 5,
-          child: Image.file(File(photo.filePath)),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.photos.length,
+                onPageChanged: (i) => setState(() => _index = i),
+                itemBuilder: (ctx, i) {
+                  final p = widget.photos[i];
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Center(
+                        child: InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 5,
+                          child: Image.file(File(p.filePath)),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.black.withOpacity(0.65), Colors.black.withOpacity(0.0)],
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(_idLabel(p), style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              Text(
+                                DateFormat('dd/MM/yyyy  h:mm a').format(DateTime.parse(p.timestamp).toLocal()),
+                                style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            // Footer: on-device folder location where this photo is saved.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              color: const Color(0xFF111111),
+              child: Row(
+                children: [
+                  const Icon(Icons.folder_open, color: Colors.white38, size: 15),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      File(_current.filePath).parent.path,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
