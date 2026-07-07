@@ -89,15 +89,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF3A3A3A), fontSize: 19, fontWeight: FontWeight.w600, height: 1.3),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset('assets/branding/splash_a380.png', fit: BoxFit.contain),
-                        const SizedBox(height: 6),
-                        Image.asset('assets/branding/splash_b777.png', fit: BoxFit.contain),
-                      ],
+                    child: Center(
+                      child: SizedBox(
+                        width: 260,
+                        height: 160,
+                        child: CustomPaint(painter: _JetOutlinePainter()),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -137,4 +136,99 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       ),
     );
   }
+}
+
+/// A clean, native line-art widebody jet illustration (drawn with strokes,
+/// not a pasted photo/raster) so it reads as a proper part of the screen -
+/// three-quarter cruise view with a fuselage, swept wings, tail, and window
+/// line detailing, in the app's own navy tone.
+class _JetOutlinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    final stroke = Paint()
+      ..color = kPrimary.withOpacity(0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final fillLight = Paint()
+      ..color = kPrimary.withOpacity(0.06)
+      ..style = PaintingStyle.fill;
+
+    // Fuselage (nose at left, tail at right)
+    final fuselage = Path()
+      ..moveTo(w * 0.04, h * 0.56)
+      ..quadraticBezierTo(w * 0.06, h * 0.42, w * 0.18, h * 0.40)
+      ..lineTo(w * 0.80, h * 0.42)
+      ..quadraticBezierTo(w * 0.94, h * 0.44, w * 0.96, h * 0.52)
+      ..quadraticBezierTo(w * 0.94, h * 0.58, w * 0.80, h * 0.60)
+      ..lineTo(w * 0.18, h * 0.60)
+      ..quadraticBezierTo(w * 0.06, h * 0.62, w * 0.04, h * 0.56)
+      ..close();
+    canvas.drawPath(fuselage, fillLight);
+    canvas.drawPath(fuselage, stroke);
+
+    // Cockpit windshield line
+    final cockpit = Path()
+      ..moveTo(w * 0.07, h * 0.50)
+      ..quadraticBezierTo(w * 0.10, h * 0.44, w * 0.16, h * 0.42);
+    canvas.drawPath(cockpit, stroke);
+
+    // Passenger window row (small evenly spaced ticks)
+    final windowPaint = Paint()
+      ..color = kPrimary.withOpacity(0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3;
+    for (double x = 0.24; x <= 0.76; x += 0.055) {
+      canvas.drawLine(Offset(w * x, h * 0.48), Offset(w * x, h * 0.52), windowPaint);
+    }
+
+    // Main swept wing
+    final wing = Path()
+      ..moveTo(w * 0.38, h * 0.58)
+      ..lineTo(w * 0.20, h * 0.92)
+      ..lineTo(w * 0.34, h * 0.90)
+      ..lineTo(w * 0.54, h * 0.60)
+      ..close();
+    canvas.drawPath(wing, fillLight);
+    canvas.drawPath(wing, stroke);
+
+    // Small winglet at wingtip
+    canvas.drawLine(Offset(w * 0.205, h * 0.915), Offset(w * 0.17, h * 0.99), stroke);
+
+    // Tail fin
+    final tail = Path()
+      ..moveTo(w * 0.82, h * 0.43)
+      ..lineTo(w * 0.94, h * 0.10)
+      ..lineTo(w * 0.985, h * 0.13)
+      ..lineTo(w * 0.90, h * 0.45)
+      ..close();
+    canvas.drawPath(tail, fillLight);
+    canvas.drawPath(tail, stroke);
+
+    // Rear horizontal stabilizer
+    final stab = Path()
+      ..moveTo(w * 0.86, h * 0.50)
+      ..lineTo(w * 0.97, h * 0.44)
+      ..lineTo(w * 0.965, h * 0.48)
+      ..lineTo(w * 0.87, h * 0.54)
+      ..close();
+    canvas.drawPath(stab, fillLight);
+    canvas.drawPath(stab, stroke);
+
+    // Engine pod under the wing
+    final enginePaint = Paint()
+      ..color = kPrimary.withOpacity(0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    final engineRect = Rect.fromCenter(center: Offset(w * 0.36, h * 0.74), width: w * 0.10, height: h * 0.14);
+    canvas.drawRRect(RRect.fromRectAndRadius(engineRect, Radius.circular(h * 0.05)), enginePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

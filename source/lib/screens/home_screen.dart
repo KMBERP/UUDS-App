@@ -145,9 +145,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                   _statsCard(),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 36),
                   _inspectorCard(),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 36),
                   _inspectionTypeSection(),
                   const SizedBox(height: 16),
                 ],
@@ -169,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          const Text("TODAY'S ACTIVITY", style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.black54)),
+          const Text("TODAY'S ACTIVITY", style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1, color: Color(0xFF2E7D32))),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -207,11 +207,12 @@ class _HomeScreenState extends State<HomeScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text('Select Inspector', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          const Text('Select Inspector', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: kHeaderBlue)),
           const SizedBox(height: 10),
           Container(
+            width: 220,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black12),
@@ -224,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: TextField(
                     controller: _idController,
                     keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 16),
                     decoration: const InputDecoration(border: InputBorder.none, hintText: 'e.g. 476', isDense: true),
                     onChanged: _onIdChanged,
@@ -239,23 +241,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           if (_matchedEmployee != null)
-            Text(_matchedEmployee!.name, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 15))
+            Text(_matchedEmployee!.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 15))
           else if (_searched)
-            const Text('ID not found', style: TextStyle(color: Colors.red, fontSize: 13)),
+            const Text('ID not found', textAlign: TextAlign.center, style: TextStyle(color: Colors.red, fontSize: 13)),
           const SizedBox(height: 4),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               TextButton(
                 onPressed: _pickFromList,
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 32)),
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 32)),
                 child: const Text('Select from list instead', style: TextStyle(fontSize: 12.5)),
               ),
+              const SizedBox(width: 4),
               TextButton(
                 onPressed: () {
                   Navigator.of(context).push(fadeSlideRoute(const EmployeeScreen()));
                 },
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 32)),
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 32)),
                 child: const Text('Manage inspectors list', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
               ),
             ],
@@ -272,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text('Select Inspection Type', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+          child: Text('Select Inspection Type', style: TextStyle(color: kHeaderBlue, fontWeight: FontWeight.w700, fontSize: 14)),
         ),
         Row(
           children: [
