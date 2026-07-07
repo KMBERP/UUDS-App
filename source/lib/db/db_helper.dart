@@ -152,6 +152,23 @@ class DBHelper {
     return null;
   }
 
+  /// Returns employees whose staff ID starts with [prefix] (e.g. "4" matches
+  /// "4", "47", "476"...), for use in a live suggestions dropdown while the
+  /// user is typing an ID. Empty/blank prefixes return no suggestions.
+  Future<List<Employee>> getEmployeesByIdPrefix(String prefix) async {
+    final p = prefix.trim();
+    if (p.isEmpty) return [];
+    final db = await database;
+    final rows = await db.query(
+      'employees',
+      where: "idNumber != '' AND idNumber LIKE ?",
+      whereArgs: ['$p%'],
+      orderBy: 'idNumber ASC',
+      limit: 8,
+    );
+    return rows.map((e) => Employee.fromMap(e)).toList();
+  }
+
   // ---------- Aircraft ----------
   Future<List<Aircraft>> getAircraft() async {
     final db = await database;

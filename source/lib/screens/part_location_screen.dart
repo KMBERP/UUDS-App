@@ -3,6 +3,7 @@ import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
+import '../widgets/app_bottom_nav.dart';
 import 'camera_screen.dart';
 import '../utils/page_transitions.dart';
 
@@ -125,6 +126,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('${widget.aircraft.regNo} — Part Location')),
+      bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
           children: [

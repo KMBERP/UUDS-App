@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import '../db/db_helper.dart';
@@ -97,6 +98,16 @@ class _CameraScreenState extends State<CameraScreen> {
           'IMG_${widget.aircraft.regNo}_${widget.type.label}_${widget.partLocation.name.replaceAll(' ', '')}_$stamp.jpg';
       final destPath = '${dir.path}/$fileName';
       await File(xfile.path).copy(destPath);
+
+      // Also save a copy into a "UUDS" album in the device's Gallery so the
+      // photo is easy to find via the normal Gallery/Photos app or a file
+      // manager, in addition to the app's own working copy above.
+      try {
+        await Gal.putImage(destPath, album: 'UUDS');
+      } catch (_) {
+        // Non-fatal: the app's own copy (used for all in-app features)
+        // was already saved successfully above.
+      }
 
       final record = InspectionPhoto(
         employeeName: widget.employee.name,

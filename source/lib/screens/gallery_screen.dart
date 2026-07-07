@@ -25,6 +25,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _search = '';
   String _storagePathLabel = '';
 
+  // Multi-select mode, so 2+ photos can be shared together at once.
+  bool _selectMode = false;
+  final Set<int> _selectedIds = {};
+
   Map<String, String> get _idByName => {for (final e in _employees) e.name: e.idNumber};
 
   String _idLabel(InspectionPhoto p) {
@@ -111,6 +115,48 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
     final caption = '${p.aircraftReg} - ${p.inspectionType} - ${p.partLocation}';
     await Share.shareXFiles([XFile(file.path)], text: caption);
+  }
+
+  void _toggleSelectMode() {
+    setState(() {
+      _selectMode = !_selectMode;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(InspectionPhoto p) {
+    if (p.id == null) return;
+    setState(() {
+      if (_selectedIds.contains(p.id)) {
+        _selectedIds.remove(p.id);
+      } else {
+        _selectedIds.add(p.id!);
+      }
+    });
+  }
+
+  Future<void> _shareSelected() async {
+    final selectedPhotos = _photos.where((p) => _selectedIds.contains(p.id)).toList();
+    final files = <XFile>[];
+    for (final p in selectedPhotos) {
+      final f = File(p.filePath);
+      if (await f.exists()) files.add(XFile(f.path));
+    }
+    if (files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('None of the selected photos were found on device.')),
+        );
+      }
+      return;
+    }
+    await Share.shareXFiles(files, text: 'UUDS Aero DWC - ${files.length} photo(s)');
+    if (mounted) {
+      setState(() {
+        _selectMode = false;
+        _selectedIds.clear();
+      });
+    }
   }
 
   Future<void> _backup() async {
@@ -240,18 +286,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Photo Gallery'),
+        title: Text(_selectMode ? '${_selectedIds.length} selected' : 'Photo Gallery'),
         actions: [
-          _backingUp
-              ? const Padding(
-                  padding: EdgeInsets.all(14),
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.backup_rounded),
-                  tooltip: 'Backup Data',
-                  onPressed: _backup,
-                ),
+          IconButton(
+            icon: Icon(_selectMode ? Icons.close_rounded : Icons.checklist_rounded),
+            tooltip: _selectMode ? 'Cancel selection' : 'Select photos to share',
+            onPressed: _toggleSelectMode,
+          ),
+          if (!_selectMode)
+            _backingUp
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.backup_rounded),
+                    tooltip: 'Backup Data',
+                    onPressed: _backup,
+                  ),
         ],
       ),
       bottomNavigationBar: const AppBottomNav(current: AppTab.gallery),
@@ -330,15 +382,28 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                 itemCount: photos.length,
                                                 itemBuilder: (ctx, gi) {
                                                   final p = photos[gi];
+                                                  final selected = _selectedIds.contains(p.id);
                                                   return GestureDetector(
-                                                    onTap: () => Navigator.of(context).push(
-                                                      fadeSlideRoute(PhotoViewerScreen(
-                                                        photos: photos,
-                                                        initialIndex: gi,
-                                                        idByName: _idByName,
-                                                      )),
-                                                    ).then((_) => _load()),
-                                                    onLongPress: () => _deletePhoto(p),
+                                                    onTap: () {
+                                                      if (_selectMode) {
+                                                        _toggleSelected(p);
+                                                        return;
+                                                      }
+                                                      Navigator.of(context).push(
+                                                        fadeSlideRoute(PhotoViewerScreen(
+                                                          photos: photos,
+                                                          initialIndex: gi,
+                                                          idByName: _idByName,
+                                                        )),
+                                                      ).then((_) => _load());
+                                                    },
+                                                    onLongPress: () {
+                                                      if (_selectMode) {
+                                                        _toggleSelected(p);
+                                                      } else {
+                                                        _deletePhoto(p);
+                                                      }
+                                                    },
                                                     child: ClipRRect(
                                                       borderRadius: BorderRadius.circular(6),
                                                       child: Stack(
@@ -385,21 +450,46 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                               ),
                                                             ),
                                                           ),
-                                                          Positioned(
-                                                            right: 2,
-                                                            top: 2,
-                                                            child: GestureDetector(
-                                                              onTap: () => _sharePhoto(p),
-                                                              child: Container(
-                                                                padding: const EdgeInsets.all(3),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors.black.withOpacity(0.55),
-                                                                  shape: BoxShape.circle,
+                                                          if (!_selectMode)
+                                                            Positioned(
+                                                              right: 2,
+                                                              top: 2,
+                                                              child: GestureDetector(
+                                                                onTap: () => _sharePhoto(p),
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.all(3),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.black.withOpacity(0.55),
+                                                                    shape: BoxShape.circle,
+                                                                  ),
+                                                                  child: const Icon(Icons.share, color: Colors.white, size: 11),
                                                                 ),
-                                                                child: const Icon(Icons.share, color: Colors.white, size: 11),
                                                               ),
                                                             ),
-                                                          ),
+                                                          if (_selectMode)
+                                                            Positioned(
+                                                              right: 2,
+                                                              top: 2,
+                                                              child: Container(
+                                                                width: 18,
+                                                                height: 18,
+                                                                decoration: BoxDecoration(
+                                                                  shape: BoxShape.circle,
+                                                                  color: selected ? kPrimary : Colors.black.withOpacity(0.4),
+                                                                  border: Border.all(color: Colors.white, width: 1.5),
+                                                                ),
+                                                                child: selected
+                                                                    ? const Icon(Icons.check, color: Colors.white, size: 13)
+                                                                    : null,
+                                                              ),
+                                                            ),
+                                                          if (selected)
+                                                            Container(
+                                                              decoration: BoxDecoration(
+                                                                border: Border.all(color: kPrimary, width: 3),
+                                                                borderRadius: BorderRadius.circular(6),
+                                                              ),
+                                                            ),
                                                         ],
                                                       ),
                                                     ),
@@ -430,7 +520,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Saved on device at: $_storagePathLabel',
+                        'App copy: $_storagePathLabel  ·  Also in Gallery → UUDS album',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 10.5, color: kPrimary.withOpacity(0.8)),
@@ -442,6 +532,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ],
         ),
       ),
+      floatingActionButton: (_selectMode && _selectedIds.isNotEmpty)
+          ? FloatingActionButton.extended(
+              onPressed: _shareSelected,
+              backgroundColor: kPrimary,
+              icon: const Icon(Icons.share, color: Colors.white),
+              label: Text('Share ${_selectedIds.length}', style: const TextStyle(color: Colors.white)),
+            )
+          : null,
     );
   }
 }

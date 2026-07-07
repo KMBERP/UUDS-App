@@ -184,6 +184,28 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                           ),
                         ),
                       ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black.withOpacity(0.65), Colors.black.withOpacity(0.0)],
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(p.aircraftReg, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              Text(p.partLocation, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 },

@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _idController = TextEditingController();
   Employee? _matchedEmployee;
   bool _searched = false;
+  List<Employee> _suggestions = [];
 
   @override
   void initState() {
@@ -51,19 +52,33 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _matchedEmployee = null;
         _searched = false;
+        _suggestions = [];
       });
       return;
     }
     final emp = await DBHelper.instance.getEmployeeByIdInput(trimmed);
+    final suggestions = await DBHelper.instance.getEmployeesByIdPrefix(trimmed);
     if (!mounted) return;
     setState(() {
       _matchedEmployee = emp;
       _searched = true;
+      // Don't bother showing a suggestions list of just the one exact match.
+      _suggestions = (emp != null && suggestions.length <= 1) ? [] : suggestions;
     });
     if (emp != null) {
       // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
     }
+  }
+
+  void _selectSuggestion(Employee e) {
+    setState(() {
+      _matchedEmployee = e;
+      _searched = true;
+      _suggestions = [];
+      _idController.text = e.idNumber;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   Future<void> _pickFromList() async {
@@ -145,9 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                   _statsCard(),
-                  const SizedBox(height: 52),
+                  const SizedBox(height: 72),
                   _inspectorCard(),
-                  const SizedBox(height: 52),
+                  const SizedBox(height: 72),
                   _inspectionTypeSection(),
                   const SizedBox(height: 16),
                 ],
@@ -169,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          const Text("TODAY'S ACTIVITY", style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1, color: Color(0xFF2E7D32))),
+          const Text("TODAY'S ACTIVITY", style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, letterSpacing: 1, color: Color(0xFF2E7D32))),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -209,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text('Select Inspector', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: kHeaderBlue)),
+          const Text('Select Inspector', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: kHeaderBlue)),
           const SizedBox(height: 10),
           Container(
             width: 220,
@@ -239,10 +254,38 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          if (_suggestions.isNotEmpty)
+            Container(
+              width: 220,
+              margin: const EdgeInsets.only(top: 4),
+              constraints: const BoxConstraints(maxHeight: 176),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.black12),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 6, offset: const Offset(0, 2))],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _suggestions.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final e = _suggestions[i];
+                  return ListTile(
+                    dense: true,
+                    visualDensity: const VisualDensity(vertical: -2),
+                    title: Text('UUDS-${e.idNumber}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                    subtitle: Text(e.name, style: const TextStyle(fontSize: 12)),
+                    onTap: () => _selectSuggestion(e),
+                  );
+                },
+              ),
+            ),
           const SizedBox(height: 8),
           if (_matchedEmployee != null)
             Text(_matchedEmployee!.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 15))
-          else if (_searched)
+          else if (_searched && _suggestions.isEmpty)
             const Text('ID not found', textAlign: TextAlign.center, style: TextStyle(color: Colors.red, fontSize: 13)),
           const SizedBox(height: 4),
           Row(
@@ -273,12 +316,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Select Inspection Type',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: kHeaderBlue, fontWeight: FontWeight.w700, fontSize: 14),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.94),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 3))],
+            ),
+            child: const Text(
+              'Select Inspection Type',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: kHeaderBlue, fontWeight: FontWeight.w700, fontSize: 17),
+            ),
           ),
         ),
         Row(

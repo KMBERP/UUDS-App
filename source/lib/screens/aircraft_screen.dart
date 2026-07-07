@@ -4,6 +4,7 @@ import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
+import '../widgets/app_bottom_nav.dart';
 import '../utils/page_transitions.dart';
 import 'part_location_screen.dart';
 
@@ -160,6 +161,7 @@ class _AircraftScreenState extends State<AircraftScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('${widget.type.label} — Select Aircraft')),
+      bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
           children: [

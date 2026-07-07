@@ -3,6 +3,7 @@ import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
+import '../widgets/app_bottom_nav.dart';
 
 class EmployeeScreen extends StatefulWidget {
   const EmployeeScreen({super.key});
@@ -124,6 +125,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Manage Inspectors')),
+      bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
           children: [

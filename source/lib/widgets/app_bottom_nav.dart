@@ -6,7 +6,7 @@ import '../screens/reports_screen.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme.dart';
 
-enum AppTab { home, gallery, reports }
+enum AppTab { home, gallery, reports, none }
 
 /// Persistent bottom navigation shown across the main screens, with a
 /// small blinking/colour-changing developer credit above it.
@@ -27,6 +27,8 @@ class AppBottomNav extends StatelessWidget {
       case AppTab.reports:
         page = const ReportsScreen();
         break;
+      case AppTab.none:
+        return; // not a real destination, nothing to navigate to
     }
     Navigator.of(context).pushAndRemoveUntil(
       fadeSlideRoute(page),
