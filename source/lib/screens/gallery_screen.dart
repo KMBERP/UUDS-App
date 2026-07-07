@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/backup_util.dart';
@@ -96,6 +97,20 @@ class _GalleryScreenState extends State<GalleryScreen> {
       } catch (_) {}
       _load();
     }
+  }
+
+  Future<void> _sharePhoto(InspectionPhoto p) async {
+    final file = File(p.filePath);
+    if (!await file.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo file not found on device.')),
+        );
+      }
+      return;
+    }
+    final caption = '${p.aircraftReg} - ${p.inspectionType} - ${p.partLocation}';
+    await Share.shareXFiles([XFile(file.path)], text: caption);
   }
 
   Future<void> _backup() async {
@@ -367,6 +382,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                                 maxLines: 1,
                                                                 overflow: TextOverflow.ellipsis,
                                                                 style: const TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.w600),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Positioned(
+                                                            right: 2,
+                                                            top: 2,
+                                                            child: GestureDetector(
+                                                              onTap: () => _sharePhoto(p),
+                                                              child: Container(
+                                                                padding: const EdgeInsets.all(3),
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors.black.withOpacity(0.55),
+                                                                  shape: BoxShape.circle,
+                                                                ),
+                                                                child: const Icon(Icons.share, color: Colors.white, size: 11),
                                                               ),
                                                             ),
                                                           ),

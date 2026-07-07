@@ -145,9 +145,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                   _statsCard(),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 52),
                   _inspectorCard(),
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 52),
                   _inspectionTypeSection(),
                   const SizedBox(height: 16),
                 ],
@@ -271,11 +271,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _inspectionTypeSection() {
     final enabled = _matchedEmployee != null;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text('Select Inspection Type', style: TextStyle(color: kHeaderBlue, fontWeight: FontWeight.w700, fontSize: 14)),
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Select Inspection Type',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: kHeaderBlue, fontWeight: FontWeight.w700, fontSize: 14),
+          ),
         ),
         Row(
           children: [

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 
@@ -73,6 +74,22 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     );
   }
 
+  Future<void> _sharePhoto(BuildContext context) async {
+    final photo = _current;
+    final file = File(photo.filePath);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo file not found on device.')),
+        );
+      }
+      return;
+    }
+    final caption =
+        '${photo.aircraftReg} - ${photo.inspectionType} - ${photo.partLocation}';
+    await Share.shareXFiles([XFile(file.path)], text: caption);
+  }
+
   Future<void> _delete(BuildContext context) async {
     final photo = _current;
     final confirm = await showDialog<bool>(
@@ -113,6 +130,11 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
           style: const TextStyle(fontSize: 14, color: Colors.white70),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'Share this photo',
+            onPressed: () => _sharePhoto(context),
+          ),
           IconButton(icon: const Icon(Icons.info_outline), onPressed: () => _showInfo(context)),
           IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(context)),
         ],
