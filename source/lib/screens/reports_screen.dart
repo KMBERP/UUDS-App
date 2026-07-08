@@ -66,6 +66,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  String _inspectorButtonLabel() {
+    if (_selectedInspector == null) return 'Inspector: All';
+    final emp = _employees.firstWhere(
+      (e) => e.name == _selectedInspector,
+      orElse: () => Employee(name: _selectedInspector!),
+    );
+    if (emp.idNumber.isNotEmpty) return 'Inspector: UUDS-${emp.idNumber}';
+    return 'Inspector: ${_selectedInspector!.split(' ').first}';
+  }
+
   Future<void> _pickInspector() async {
     final chosen = await showDialog<String?>(
       context: context,
@@ -73,7 +83,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         title: const Text('Filter by Inspector'),
         children: [
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All Inspectors')),
-          ..._employees.map((e) => SimpleDialogOption(onPressed: () => Navigator.pop(ctx, e.name), child: Text(e.name))),
+          ..._employees.map((e) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, e.name),
+            child: Text(e.idNumber.isEmpty ? e.name : '${e.name} (UUDS-${e.idNumber})'),
+          )),
         ],
       ),
     );
@@ -338,7 +351,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       _topButton('Part Location', _kind == ReportKind.partLocation, () => setState(() => _kind = ReportKind.partLocation)),
                       _topButton(
-                        _selectedInspector == null ? 'Inspector: All' : 'Inspector: ${_selectedInspector!.split(' ').first}',
+                        _inspectorButtonLabel(),
                         _selectedInspector != null,
                         _pickInspector,
                       ),

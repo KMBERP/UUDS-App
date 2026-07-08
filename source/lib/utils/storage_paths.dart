@@ -61,7 +61,7 @@ class StoragePaths {
 
   static String _sanitize(String s) => s.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
 
-  /// UUDS / {AircraftReg} / {InspectionType} / {Location}
+  /// UUDS / {AircraftReg} / {InspectionType} / {Location} / Foto
   static Future<Directory> photoDirectory({
     required String aircraftReg,
     required String inspectionTypeLabel,
@@ -70,7 +70,7 @@ class StoragePaths {
     final hasAccess = await hasPublicStorageAccess();
     final root = hasAccess ? await publicRoot() : await fallbackRoot();
     final dir = Directory(
-      '${root.path}/${_sanitize(aircraftReg)}/${_sanitize(inspectionTypeLabel)}/${_sanitize(location)}',
+      '${root.path}/${_sanitize(aircraftReg)}/${_sanitize(inspectionTypeLabel)}/${_sanitize(location)}/Foto',
     );
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;

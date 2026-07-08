@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/page_transitions.dart';
@@ -37,19 +36,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadStats();
-    _restoreLastEmployee();
-  }
-
-  Future<void> _restoreLastEmployee() async {
-    final savedId = await DBHelper.instance.getSetting(_lastIdKey);
-    if (savedId == null || savedId.isEmpty) return;
-    final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
-    if (!mounted || emp == null) return;
-    setState(() {
-      _matchedEmployee = emp;
-      _searched = true;
-      _idController.text = emp.idNumber;
-    });
   }
 
   @override
@@ -85,7 +71,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (emp != null) {
       // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
-      DBHelper.instance.setSetting(_lastIdKey, emp.idNumber);
     }
   }
 
@@ -97,7 +82,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _idController.text = e.idNumber;
     });
     FocusManager.instance.primaryFocus?.unfocus();
-    DBHelper.instance.setSetting(_lastIdKey, e.idNumber);
   }
 
   Future<void> _pickFromList() async {
@@ -121,7 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _searched = true;
         _idController.text = chosen.idNumber;
       });
-      DBHelper.instance.setSetting(_lastIdKey, chosen.idNumber);
     }
   }
 
@@ -142,10 +125,19 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_lastBackPress == null || now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
           _lastBackPress = now;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Press back again to exit'), duration: Duration(seconds: 2)),
+            const SnackBar(content: Text('Press back again to logout'), duration: Duration(seconds: 2)),
           );
         } else {
-          SystemNavigator.pop();
+          DBHelper.instance.setSetting(_lastIdKey, '');
+          setState(() {
+            _matchedEmployee = null;
+            _searched = false;
+            _idController.clear();
+          });
+          _lastBackPress = null;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Logged out')),
+          );
         }
       },
       child: Scaffold(
@@ -225,9 +217,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Expanded(child: _statItem(Icons.flight, kPrimary, 'Aircraft', '${_stats['aircraft']}')),
               _divider(),
-              Expanded(child: _statItem(Icons.call_received_rounded, kPrimary, 'Receiving', '${_stats['todayReceiving']}')),
+              Expanded(child: _statItem(Icons.download_rounded, kPrimary, 'Receiving', '${_stats['todayReceiving']}')),
               _divider(),
-              Expanded(child: _statItem(Icons.call_made_rounded, kDispatch, 'Dispatching', '${_stats['todayDispatch']}')),
+              Expanded(child: _statItem(Icons.upload_rounded, kDispatch, 'Dispatching', '${_stats['todayDispatch']}')),
             ],
           ),
         ],
@@ -375,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: 'Record & inspect incoming Aircraft Parts',
                 color: kPrimary,
                 enabled: enabled,
-                icon: Icons.call_received_rounded,
+                icon: Icons.download_rounded,
                 onTap: () => _startInspection(InspectionType.receiving),
               ),
             ),
@@ -386,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle: 'Verify & log outgoing Aircraft Parts',
                 color: kDispatch,
                 enabled: enabled,
-                icon: Icons.call_made_rounded,
+                icon: Icons.upload_rounded,
                 onTap: () => _startInspection(InspectionType.dispatch),
               ),
             ),

@@ -198,18 +198,26 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                               colors: [Colors.black.withOpacity(0.7), Colors.black.withOpacity(0.0)],
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'A/C: ${p.aircraftReg}',
-                                style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                              Expanded(
+                                child: Text(
+                                  'A/C: ${p.aircraftReg}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Location: ${p.partLocation}',
-                                style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Location: ${p.partLocation}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                ),
                               ),
                             ],
                           ),

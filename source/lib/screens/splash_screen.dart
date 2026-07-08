@@ -15,7 +15,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late final Animation<double> _fadeIn;
   late final Animation<double> _scaleIn;
 
-  late final AnimationController _dotsController;
+  late final AnimationController _flyController;
 
   static const int _waitSeconds = 5;
 
@@ -30,11 +30,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _textController.forward();
 
     // Aircraft icon grows and flies left-to-right across the 5 second wait.
-    _dotsController = AnimationController(
+    _flyController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _waitSeconds),
     );
-    _dotsController.forward();
+    _flyController.forward();
 
     Future.delayed(const Duration(seconds: _waitSeconds), () {
       if (mounted) {
@@ -46,7 +46,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   void dispose() {
     _textController.dispose();
-    _dotsController.dispose();
+    _flyController.dispose();
     super.dispose();
   }
 
@@ -97,26 +97,45 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   ),
                   const SizedBox(height: 10),
                   // Loading indicator: a small aircraft icon that grows and
-                  // flies from left to right as the wait progresses.
+                  // flies from left to right as the wait progresses, with a faint smoke trail.
                   SizedBox(
                     height: 34,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         return AnimatedBuilder(
-                          animation: _dotsController,
+                          animation: _flyController,
                           builder: (context, child) {
-                            final t = Curves.easeInOut.transform(_dotsController.value.clamp(0.0, 1.0));
+                            final t = Curves.easeInOut.transform(_flyController.value.clamp(0.0, 1.0));
                             const minSize = 14.0;
                             const maxSize = 30.0;
                             final size = minSize + (maxSize - minSize) * t;
                             final maxX = constraints.maxWidth - size;
+                            final aircraftLeft = maxX * t;
                             return Stack(
                               children: [
+                                // Smoke trail dots behind the aircraft
+                                for (int i = 1; i <= 3; i++) ...[
+                                  Positioned(
+                                    left: aircraftLeft - (size * 0.35 * i) - (8 * t),
+                                    top: (34 - size * 0.3) / 2 + (size * 0.15),
+                                    child: Opacity(
+                                      opacity: 0.4 - (i * 0.1),
+                                      child: Container(
+                                        width: size * (0.45 - i * 0.1),
+                                        height: size * (0.45 - i * 0.1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.withOpacity(0.5 - i * 0.12),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 Positioned(
-                                  left: maxX * t,
+                                  left: aircraftLeft,
                                   top: (34 - size) / 2,
                                   child: Transform.rotate(
-                                    angle: -0.785398, // -45°: point the icon rightward
+                                    angle: -0.6, // slight nose-up, pointing rightward
                                     child: Icon(Icons.flight, size: size, color: kPrimary),
                                   ),
                                 ),
