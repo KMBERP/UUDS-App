@@ -61,8 +61,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _loadStoragePath() async {
-    final hasAccess = await StoragePaths.hasPublicStorageAccess();
-    final root = hasAccess ? await StoragePaths.publicRoot() : await StoragePaths.fallbackRoot();
+    final root = await StoragePaths.root();
     if (mounted) {
       setState(() => _storagePathLabel = root.path);
     }
@@ -521,7 +520,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Saved on device (survives uninstall): $_storagePathLabel',
+                        'Saved at: $_storagePathLabel  ·  also in Gallery/Photos under Pictures/UUDS',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 10.5, color: kPrimary.withOpacity(0.8)),

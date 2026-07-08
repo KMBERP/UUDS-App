@@ -99,15 +99,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   // Loading indicator: a large aircraft icon that grows and
                   // flies from left to right as the wait progresses, with a faint smoke trail.
                   SizedBox(
-                    height: 44,
+                    height: 84,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         return AnimatedBuilder(
                           animation: _flyController,
                           builder: (context, child) {
                             final t = Curves.easeInOut.transform(_flyController.value.clamp(0.0, 1.0));
-                            const minSize = 20.0;
-                            const maxSize = 38.0;
+                            const minSize = 38.0;
+                            const maxSize = 76.0;
                             final size = minSize + (maxSize - minSize) * t;
                             final maxX = constraints.maxWidth - size;
                             final aircraftLeft = maxX * t;
@@ -116,13 +116,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 // Smoke trail dots behind the aircraft
                                 for (int i = 1; i <= 3; i++) ...[
                                   Positioned(
-                                    left: aircraftLeft - (size * 0.45 * i) - (10 * t),
-                                    top: (44 - size * 0.3) / 2 + (size * 0.18),
+                                    left: aircraftLeft - (size * 0.55 * i) - (12 * t),
+                                    top: (84 - size * 0.3) / 2 + (size * 0.22),
                                     child: Opacity(
                                       opacity: 0.4 - (i * 0.1),
                                       child: Container(
-                                        width: size * (0.5 - i * 0.1),
-                                        height: size * (0.5 - i * 0.1),
+                                        width: size * (0.55 - i * 0.12),
+                                        height: size * (0.55 - i * 0.12),
                                         decoration: BoxDecoration(
                                           color: Colors.grey.withOpacity(0.5 - i * 0.12),
                                           shape: BoxShape.circle,
@@ -133,9 +133,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 ],
                                 Positioned(
                                   left: aircraftLeft,
-                                  top: (44 - size) / 2,
+                                  top: (84 - size) / 2,
                                   child: Transform.rotate(
-                                    angle: -1.3, // rotated to fly rightward (nose pointing right)
+                                    // Icons.flight points straight up (nose north) by
+                                    // default, so +45deg only angled it up-and-right.
+                                    // +90deg (clockwise) turns the nose fully to the
+                                    // right/east so it flies level, left-to-right.
+                                    angle: 1.5707963268, // +90°
                                     child: Icon(Icons.flight, size: size, color: kPrimary),
                                   ),
                                 ),

@@ -16,8 +16,7 @@ class BackupUtil {
     Set<String> aircraftRegs,
     Set<String> locations,
   ) async {
-    final hasAccess = await StoragePaths.hasPublicStorageAccess();
-    final photosRoot = hasAccess ? await StoragePaths.publicRoot() : await StoragePaths.fallbackRoot();
+    final photosRoot = await StoragePaths.root();
     final backupsDir = await StoragePaths.backupsDirectory();
 
     final dbPath = await DBHelper.instance.dbFilePath;

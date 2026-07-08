@@ -46,10 +46,16 @@ The push itself triggers the build automatically.
 5. **Camera opens** — tapping the shutter button **instantly captures and auto-saves** the
    photo (no separate "Save" step). Take as many photos as needed, then tap **Finish**.
 
-Photos are saved on-device at:
+Photos are saved on-device in two places:
 ```
-UUDS_Aero_Photos/[Aircraft Reg]/[Receiving or Dispatch]/[Part Location]/IMG_....jpg
+Private working copy (always reliable, used by the app itself):
+  Android/data/com.uudsaero.uuds_parts_app/files/UUDS/[Aircraft Reg]/[Receiving or Dispatch]/[Part Location]/IMG_....jpg
+
+Public Gallery copy (visible in Photos/Gallery app and any file manager):
+  Pictures/UUDS/[Aircraft Reg]/[Receiving or Dispatch]/[Part Location]/IMG_....jpg
 ```
+The public copy is written using Android's MediaStore API, so no special
+"All files access" permission is needed — just the normal camera permission.
 
 ## Reports
 From the Home screen → Reports: generate PDF reports (Photo Log, Aircraft-wise Summary,
@@ -62,3 +68,20 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
 - No PIN/login is set up (single shared device assumption). Say the word if you want a
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
+
+## Production fixes (this update)
+1. **Splash screen aircraft icon** — was climbing diagonally up-and-right at 45°; now flies
+   fully horizontal, nose pointing straight right, and is noticeably larger.
+2. **Public Gallery folder structure** — photos are now mirrored into the device's Photos/
+   Gallery app via Android's MediaStore API, correctly nested as
+   `Pictures/UUDS/[Aircraft]/[Receiving or Dispatch]/[Part Location]/...`. This replaces the
+   old "All files access" permission approach, which Android often silently refused to grant
+   (so photos quietly fell back to a private folder and never appeared in the Gallery). The
+   new approach needs no special permission at all, and is compliant with Play Store policy.
+3. **Inspector "logout" when switching tabs** — tapping Gallery/Reports and back to Home no
+   longer clears the selected inspector. The signed-in inspector is now held in memory for
+   the whole app session and only clears on the intentional double-back-press logout on Home
+   (or if the app process is fully killed and relaunched).
+4. **Finish button save summary** — the dialog shown after tapping Finish in the camera
+   screen now always states how many photos were saved, the inspector/aircraft/type/location,
+   the exact on-device folder, and whether each photo was also mirrored to the Gallery.

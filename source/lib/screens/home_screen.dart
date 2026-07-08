@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/page_transitions.dart';
+import '../utils/session.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/inspection_type_card.dart';
@@ -36,7 +38,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadStats();
-    _restoreLastEmployee();
+    if (Session.currentEmployee != null) {
+      // Switching back to the Home tab: the inspector is still "logged in"
+      // in Session, so restore it immediately (no DB round-trip, no flash
+      // of an empty/unselected state).
+      _matchedEmployee = Session.currentEmployee;
+      _searched = true;
+      _idController.text = _matchedEmployee!.idNumber;
+    } else {
+      // Fresh app launch (process was fully killed): fall back to whatever
+      // inspector was last saved to the database.
+      _restoreLastEmployee();
+    }
   }
 
   Future<void> _restoreLastEmployee() async {
@@ -44,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (savedId == null || savedId.isEmpty) return;
     final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
     if (!mounted || emp == null) return;
+    Session.login(emp);
     setState(() {
       _matchedEmployee = emp;
       _searched = true;
@@ -84,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (emp != null) {
       // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
+      Session.login(emp);
       DBHelper.instance.setSetting(_lastIdKey, emp.idNumber);
     }
   }
@@ -96,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _idController.text = e.idNumber;
     });
     FocusManager.instance.primaryFocus?.unfocus();
+    Session.login(e);
     DBHelper.instance.setSetting(_lastIdKey, e.idNumber);
   }
 
@@ -120,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _searched = true;
         _idController.text = chosen.idNumber;
       });
+      Session.login(chosen);
       DBHelper.instance.setSetting(_lastIdKey, chosen.idNumber);
     }
   }
@@ -144,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SnackBar(content: Text('Press back again to logout'), duration: Duration(seconds: 2)),
           );
         } else {
+          Session.logout();
           DBHelper.instance.setSetting(_lastIdKey, '');
           setState(() {
             _matchedEmployee = null;
@@ -154,6 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Logged out')),
           );
+          // Close the app after logout
+          SystemNavigator.pop();
         }
       },
       child: Scaffold(

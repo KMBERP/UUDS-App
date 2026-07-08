@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:media_scanner/media_scanner.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/ocr_util.dart';
@@ -37,12 +36,12 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _error;
   final List<InspectionPhoto> _sessionPhotos = []; // newest first
   final TextEditingController _remarksController = TextEditingController();
+  int _galleryPublishFailures = 0;
 
   @override
   void initState() {
     super.initState();
     _initCamera();
-    StoragePaths.ensurePublicStorageAccess();
   }
 
   Future<void> _initCamera() async {
@@ -99,14 +98,19 @@ class _CameraScreenState extends State<CameraScreen> {
       final destPath = '${dir.path}/$fileName';
       await File(xfile.path).copy(destPath);
 
-      // Tell Android's media scanner about the new file so it shows up in
-      // the Gallery/Photos app right away (files written directly to public
-      // storage aren't indexed automatically until a scan runs).
-      try {
-        await MediaScanner.loadMedia(path: destPath);
-      } catch (_) {
-        // Non-fatal: the file is already saved on disk either way.
-      }
+      // Mirror the photo into the public Gallery (Pictures/UUDS/Aircraft/
+      // InspectionType/Location/...) via MediaStore so it shows up in the
+      // Gallery/Photos app and file manager right away, in the correct
+      // sub-folder. This is independent of the private working copy above,
+      // which is what the app itself always reads back from.
+      final published = await StoragePaths.publishToGallery(
+        sourcePath: destPath,
+        aircraftReg: widget.aircraft.regNo,
+        inspectionTypeLabel: widget.type.label,
+        location: widget.partLocation.name,
+        fileName: fileName,
+      );
+      if (!published) _galleryPublishFailures++;
 
       final record = InspectionPhoto(
         employeeName: widget.employee.name,
@@ -250,6 +254,9 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _finish() async {
     final dir = await _targetDirectory();
     final photoCount = _sessionPhotos.length;
+    final publishedCount = photoCount - _galleryPublishFailures;
+    final galleryFolderPath =
+        'Pictures/UUDS/${widget.aircraft.regNo}/${widget.type.label}/${widget.partLocation.name}';
 
     if (!mounted) return;
 
@@ -270,7 +277,9 @@ class _CameraScreenState extends State<CameraScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$photoCount photo${photoCount == 1 ? '' : 's'} saved successfully.',
+                photoCount == 0
+                    ? 'No photos were taken this session.'
+                    : '$photoCount photo${photoCount == 1 ? '' : 's'} saved successfully.',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
               const SizedBox(height: 12),
@@ -278,21 +287,43 @@ class _CameraScreenState extends State<CameraScreen> {
               _infoRow('Aircraft:', widget.aircraft.regNo),
               _infoRow('Type:', widget.type.label),
               _infoRow('Location:', widget.partLocation.name),
-              const SizedBox(height: 12),
-              const Text('Saved to:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.black12),
+              if (photoCount > 0) ...[
+                const SizedBox(height: 12),
+                const Text('Saved on device at:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Text(
+                    dir.path,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
                 ),
-                child: Text(
-                  dir.path,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      publishedCount == photoCount ? Icons.photo_library_rounded : Icons.warning_amber_rounded,
+                      size: 16,
+                      color: publishedCount == photoCount ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        publishedCount == photoCount
+                            ? 'Also copied to Gallery/Photos:\n$galleryFolderPath'
+                            : '$publishedCount of $photoCount copied to Gallery/Photos so far:\n$galleryFolderPath',
+                        style: const TextStyle(fontSize: 11.5, color: Colors.black54, height: 1.3),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+              ],
             ],
           ),
         ),
