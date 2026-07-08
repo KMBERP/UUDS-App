@@ -145,15 +145,83 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     },
                   ),
                   const SizedBox(height: 10),
+                  // Hero illustration: the workshop hangar artwork, framed as
+                  // a soft card (rounded corners, hairline border, subtle
+                  // shadow, small caption) so it reads as a designed part of
+                  // the page rather than a plain dropped-in photo. Sized
+                  // responsively to the illustration's own aspect ratio so it
+                  // fills whatever space is available on the device.
                   Expanded(
                     child: Center(
-                      child: SizedBox(
-                        width: 260,
-                        height: 160,
-                        child: Image.asset(
-                          'assets/branding/splash_jet.png',
-                          fit: BoxFit.contain,
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          const aspect = 1408 / 768; // width / height of the artwork
+                          double w = constraints.maxWidth;
+                          double h = w / aspect;
+                          if (h > constraints.maxHeight) {
+                            h = constraints.maxHeight;
+                            w = h * aspect;
+                          }
+                          return Container(
+                            width: w,
+                            height: h,
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: kPrimary.withOpacity(0.12)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: kPrimary.withOpacity(0.16),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.asset(
+                                    'assets/branding/splash_hangar_workshop.jpg',
+                                    fit: BoxFit.cover,
+                                  ),
+                                  // Faint accent underline caption, echoing
+                                  // the amber accent used in the slogan above.
+                                  Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 4),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.black.withOpacity(0.35),
+                                          ],
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        'UUDS DXB WORKSHOP',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
