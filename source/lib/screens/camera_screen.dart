@@ -247,13 +247,89 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _finish() {
+  Future<void> _finish() async {
+    final dir = await _targetDirectory();
+    final photoCount = _sessionPhotos.length;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Session Complete'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$photoCount photo${photoCount == 1 ? '' : 's'} saved successfully.',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+              const SizedBox(height: 12),
+              _infoRow('Inspector:', widget.employee.name),
+              _infoRow('Aircraft:', widget.aircraft.regNo),
+              _infoRow('Type:', widget.type.label),
+              _infoRow('Location:', widget.partLocation.name),
+              const SizedBox(height: 12),
+              const Text('Saved to:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: Text(
+                  dir.path,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       fadeSlideRoute(PartLocationScreen(
         employee: widget.employee,
         type: widget.type,
         aircraft: widget.aircraft,
       )),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.black54)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -420,7 +496,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
 
-                    // Finish button (bottom-right of capture button) - just navigates back
+                    // Finish button (bottom-right of capture button)
                     Positioned(
                       bottom: 36,
                       right: 24,

@@ -36,6 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadStats();
+    _restoreLastEmployee();
+  }
+
+  Future<void> _restoreLastEmployee() async {
+    final savedId = await DBHelper.instance.getSetting(_lastIdKey);
+    if (savedId == null || savedId.isEmpty) return;
+    final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
+    if (!mounted || emp == null) return;
+    setState(() {
+      _matchedEmployee = emp;
+      _searched = true;
+      _idController.text = emp.idNumber;
+    });
   }
 
   @override
@@ -71,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (emp != null) {
       // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
+      DBHelper.instance.setSetting(_lastIdKey, emp.idNumber);
     }
   }
 
@@ -82,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _idController.text = e.idNumber;
     });
     FocusManager.instance.primaryFocus?.unfocus();
+    DBHelper.instance.setSetting(_lastIdKey, e.idNumber);
   }
 
   Future<void> _pickFromList() async {
@@ -105,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _searched = true;
         _idController.text = chosen.idNumber;
       });
+      DBHelper.instance.setSetting(_lastIdKey, chosen.idNumber);
     }
   }
 
