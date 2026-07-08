@@ -1,0 +1,29 @@
+ANDROID MANIFEST UPDATE REQUIRED
+==============================
+
+Since your repo does not include the android/ folder (it's typically gitignored in Flutter projects),
+you need to manually update your AndroidManifest.xml file after building locally.
+
+File location: android/app/src/main/AndroidManifest.xml
+
+Add these attributes to the <application> tag:
+
+<application
+    android:label="UUDS Parts Inspection"
+    android:name="${applicationName}"
+    android:icon="@mipmap/ic_launcher"
+    android:requestLegacyExternalStorage="true"
+    android:preserveLegacyExternalStorage="true">
+
+Also ensure these permissions are present in the <manifest> tag (before <application>):
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+
+IMPORTANT: After adding these, run:
+  flutter clean
+  flutter pub get
+  flutter build apk --release

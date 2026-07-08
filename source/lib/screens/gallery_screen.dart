@@ -25,7 +25,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   String _search = '';
   String _storagePathLabel = '';
 
-  // Multi-select mode, so 2+ photos can be shared together at once.
   bool _selectMode = false;
   final Set<int> _selectedIds = {};
 
@@ -63,7 +62,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Future<void> _loadStoragePath() async {
     final base = await getExternalStorageDirectory();
     if (mounted && base != null) {
-      setState(() => _storagePathLabel = '${base.path}/UUDS_Aero_Photos');
+      setState(() => _storagePathLabel = '${base.parent.path}/UUDS');
     }
   }
 
@@ -261,7 +260,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     );
   }
 
-  // aircraftReg -> inspectionType -> partLocation -> photos
   Map<String, Map<String, Map<String, List<InspectionPhoto>>>> _buildTree() {
     final tree = <String, Map<String, Map<String, List<InspectionPhoto>>>>{};
     final query = _search.trim().toLowerCase();
@@ -441,12 +439,24 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                                                   colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.75)],
                                                                 ),
                                                               ),
-                                                              child: Text(
-                                                                _formatTimestamp(p.timestamp),
-                                                                textAlign: TextAlign.center,
-                                                                maxLines: 1,
-                                                                overflow: TextOverflow.ellipsis,
-                                                                style: const TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.w600),
+                                                              child: Column(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  Text(
+                                                                    p.partLocation,
+                                                                    textAlign: TextAlign.center,
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                    style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w600),
+                                                                  ),
+                                                                  Text(
+                                                                    _formatTimestamp(p.timestamp),
+                                                                    textAlign: TextAlign.center,
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                    style: const TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.w600),
+                                                                  ),
+                                                                ],
                                                               ),
                                                             ),
                                                           ),
@@ -508,7 +518,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           },
                         ),
             ),
-            // Footer: shows where all photos are stored on the device.
             if (_storagePathLabel.isNotEmpty)
               Container(
                 width: double.infinity,

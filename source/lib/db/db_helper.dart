@@ -26,28 +26,28 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 4,
+      version: 5, // Bumped to 5 for location reset
       onCreate: (db, version) async {
-        await db.execute('''
+        await db.execute("""
           CREATE TABLE employees(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
             idNumber TEXT DEFAULT ''
           )
-        ''');
-        await db.execute('''
+        """);
+        await db.execute("""
           CREATE TABLE aircraft(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             regNo TEXT UNIQUE NOT NULL
           )
-        ''');
-        await db.execute('''
+        """);
+        await db.execute("""
           CREATE TABLE part_locations(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL
           )
-        ''');
-        await db.execute('''
+        """);
+        await db.execute("""
           CREATE TABLE photos(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             employeeName TEXT NOT NULL,
@@ -62,70 +62,60 @@ class DBHelper {
             tagLocation TEXT DEFAULT '',
             tagQty TEXT DEFAULT ''
           )
-        ''');
-        for (final loc in [
-          'Cockpit',
-          'Forward Galley',
-          'Aft Galley',
-          'Forward Lavatory',
-          'Aft Lavatory',
-          'Cabin - Seat Row',
-          'Cargo Bay',
-          'Overhead Bin',
-          'Sidewall Panel',
-          'Divider / Partition',
-        ]) {
-          await db.insert('part_locations', {'name': loc});
-        }
-        for (final entry in InspectorRoster.seed) {
-          await db.insert('employees', {'name': entry.$1, 'idNumber': entry.$2},
-              conflictAlgorithm: ConflictAlgorithm.ignore);
-        }
+        """);
+        await _seedDefaults(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute("ALTER TABLE photos ADD COLUMN remarks TEXT DEFAULT ''");
-        }
-        if (oldVersion < 3) {
-          await db.execute("ALTER TABLE photos ADD COLUMN tagPartNo TEXT DEFAULT ''");
-          await db.execute("ALTER TABLE photos ADD COLUMN tagDescription TEXT DEFAULT ''");
-          await db.execute("ALTER TABLE photos ADD COLUMN tagLocation TEXT DEFAULT ''");
-        }
-        if (oldVersion < 4) {
-          await db.execute("ALTER TABLE employees ADD COLUMN idNumber TEXT DEFAULT ''");
-          await db.execute("ALTER TABLE photos ADD COLUMN tagQty TEXT DEFAULT ''");
-          for (final entry in InspectorRoster.seed) {
-            await db.insert('employees', {'name': entry.$1, 'idNumber': entry.$2},
-                conflictAlgorithm: ConflictAlgorithm.ignore);
-          }
+        if (oldVersion < 5) {
+          // Clear old locations and seed new ones for version 5
+          await db.delete('part_locations');
+          await _seedDefaults(db);
         }
       },
     );
   }
 
-  // ---------- Employees ----------
-  Future<List<Employee>> getEmployees() async {
-    final db = await database;
-    final rows = await db.query('employees', orderBy: 'name ASC');
-    return rows.map((e) => Employee.fromMap(e)).toList();
-  }
-
-  Future<Employee> addEmployee(String name, {String idNumber = ''}) async {
-    final db = await database;
-    final id = await db.insert('employees', {'name': name.trim(), 'idNumber': idNumber.trim()},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
-    if (id == 0) {
-      final existing = await db.query('employees', where: 'name = ?', whereArgs: [name.trim()]);
-      return Employee.fromMap(existing.first);
+  Future<void> _seedDefaults(Database db) async {
+    // Seed employees from roster
+    for (final entry in inspectorRoster.entries) {
+      await db.insert(
+        'employees',
+        {'name': entry.value, 'idNumber': entry.key == entry.value ? '' : entry.key},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
-    return Employee(id: id, name: name.trim(), idNumber: idNumber.trim());
+    // Seed new alphabetically sorted locations
+    final locations = [
+      'LAV 1 MC',
+      'LAV 1MA',
+      'LAV 1MB',
+      'LAV 1UA',
+      'LAV 1UB',
+      'LAV 2MM',
+      'LAV 3MG',
+      'LAV 3MH',
+      'LAV 3UE',
+      'LAV 3UF',
+      'LAV 3UG',
+      'LAV 3UH',
+      'LAV 5MI',
+      'LAV 5MJ',
+      'LAV 5MK',
+      'LAV 5ML',
+    ];
+    for (final loc in locations) {
+      await db.insert('part_locations', {'name': loc}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 
-  Future<void> updateEmployee(int id, String newName, {String? idNumber}) async {
+  Future<int> addEmployee(String name, {String idNumber = ''}) async {
     final db = await database;
-    final values = <String, dynamic>{'name': newName.trim()};
-    if (idNumber != null) values['idNumber'] = idNumber.trim();
-    await db.update('employees', values, where: 'id = ?', whereArgs: [id]);
+    return db.insert('employees', {'name': name, 'idNumber': idNumber});
+  }
+
+  Future<void> updateEmployee(int id, String name, {String idNumber = ''}) async {
+    final db = await database;
+    await db.update('employees', {'name': name, 'idNumber': idNumber}, where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteEmployee(int id) async {
@@ -133,141 +123,72 @@ class DBHelper {
     await db.delete('employees', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Finds an employee by staff ID digits, tolerating leading zeros
-  /// (e.g. "71" matches an ID stored as "071").
+  Future<List<Employee>> getEmployees() async {
+    final db = await database;
+    final maps = await db.query('employees', orderBy: 'name ASC');
+    return maps.map((m) => Employee.fromMap(m)).toList();
+  }
+
   Future<Employee?> getEmployeeByIdInput(String input) async {
-    final digits = input.trim();
-    if (digits.isEmpty) return null;
     final db = await database;
-    final exact = await db.query('employees', where: 'idNumber = ?', whereArgs: [digits]);
-    if (exact.isNotEmpty) return Employee.fromMap(exact.first);
-
-    final n = int.tryParse(digits);
-    if (n == null) return null;
-    final all = await db.query('employees', where: "idNumber != ''");
-    for (final row in all) {
-      final key = int.tryParse(row['idNumber'] as String);
-      if (key != null && key == n) return Employee.fromMap(row);
-    }
-    return null;
-  }
-
-  /// Returns employees whose staff ID starts with [prefix] (e.g. "4" matches
-  /// "4", "47", "476"...), for use in a live suggestions dropdown while the
-  /// user is typing an ID. Empty/blank prefixes return no suggestions.
-  Future<List<Employee>> getEmployeesByIdPrefix(String prefix) async {
-    final p = prefix.trim();
-    if (p.isEmpty) return [];
-    final db = await database;
-    final rows = await db.query(
+    final maps = await db.query(
       'employees',
-      where: "idNumber != '' AND idNumber LIKE ?",
-      whereArgs: ['$p%'],
-      orderBy: 'idNumber ASC',
-      limit: 8,
+      where: 'idNumber = ? OR name = ?',
+      whereArgs: [input, input],
+      limit: 1,
     );
-    return rows.map((e) => Employee.fromMap(e)).toList();
+    if (maps.isEmpty) return null;
+    return Employee.fromMap(maps.first);
   }
 
-  // ---------- Aircraft ----------
+  Future<List<Employee>> getEmployeesByIdPrefix(String prefix) async {
+    final db = await database;
+    final maps = await db.query(
+      'employees',
+      where: 'idNumber LIKE ?',
+      whereArgs: ['$prefix%'],
+      orderBy: 'idNumber ASC',
+    );
+    return maps.map((m) => Employee.fromMap(m)).toList();
+  }
+
+  Future<int> addAircraft(String regNo) async {
+    final db = await database;
+    return db.insert('aircraft', {'regNo': regNo});
+  }
+
   Future<List<Aircraft>> getAircraft() async {
     final db = await database;
-    final rows = await db.query('aircraft', orderBy: 'regNo ASC');
-    return rows.map((e) => Aircraft.fromMap(e)).toList();
+    final maps = await db.query('aircraft', orderBy: 'regNo ASC');
+    return maps.map((m) => Aircraft.fromMap(m)).toList();
   }
 
-  Future<Aircraft> addAircraft(String regNo) async {
+  Future<int> addPartLocation(String name) async {
     final db = await database;
-    final id = await db.insert('aircraft', {'regNo': regNo.trim()},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
-    if (id == 0) {
-      final existing = await db.query('aircraft', where: 'regNo = ?', whereArgs: [regNo.trim()]);
-      return Aircraft.fromMap(existing.first);
-    }
-    return Aircraft(id: id, regNo: regNo.trim());
+    return db.insert('part_locations', {'name': name});
   }
 
-  Future<void> updateAircraft(int id, String newRegNo) async {
-    final db = await database;
-    await db.update('aircraft', {'regNo': newRegNo.trim()}, where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deleteAircraft(int id) async {
-    final db = await database;
-    await db.delete('aircraft', where: 'id = ?', whereArgs: [id]);
-  }
-
-  // ---------- Part Locations ----------
   Future<List<PartLocation>> getPartLocations() async {
     final db = await database;
-    final rows = await db.query('part_locations', orderBy: 'name ASC');
-    return rows.map((e) => PartLocation.fromMap(e)).toList();
+    final maps = await db.query('part_locations', orderBy: 'name ASC');
+    return maps.map((m) => PartLocation.fromMap(m)).toList();
   }
 
-  Future<PartLocation> addPartLocation(String name) async {
+  Future<int> insertPhoto(InspectionPhoto photo) async {
     final db = await database;
-    final id = await db.insert('part_locations', {'name': name.trim()},
-        conflictAlgorithm: ConflictAlgorithm.ignore);
-    if (id == 0) {
-      final existing = await db.query('part_locations', where: 'name = ?', whereArgs: [name.trim()]);
-      return PartLocation.fromMap(existing.first);
-    }
-    return PartLocation(id: id, name: name.trim());
+    return db.insert('photos', photo.toMap());
   }
 
-  Future<void> updatePartLocation(int id, String newName) async {
+  Future<List<InspectionPhoto>> getPhotos({String? fromDate, String? toDate}) async {
     final db = await database;
-    await db.update('part_locations', {'name': newName.trim()}, where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deletePartLocation(int id) async {
-    final db = await database;
-    await db.delete('part_locations', where: 'id = ?', whereArgs: [id]);
-  }
-
-  // ---------- Photos ----------
-  Future<int> addPhoto(InspectionPhoto p) async {
-    final db = await database;
-    return db.insert('photos', p.toMap()..remove('id'));
-  }
-
-  Future<List<InspectionPhoto>> getPhotos({
-    String? aircraftReg,
-    String? inspectionType,
-    String? partLocation,
-    String? fromDate,
-    String? toDate,
-  }) async {
-    final db = await database;
-    final where = <String>[];
-    final args = <dynamic>[];
-    if (aircraftReg != null) {
-      where.add('aircraftReg = ?');
-      args.add(aircraftReg);
+    String? where;
+    List<String>? whereArgs;
+    if (fromDate != null && toDate != null) {
+      where = 'timestamp >= ? AND timestamp <= ?';
+      whereArgs = [fromDate, toDate];
     }
-    if (inspectionType != null) {
-      where.add('inspectionType = ?');
-      args.add(inspectionType);
-    }
-    if (partLocation != null) {
-      where.add('partLocation = ?');
-      args.add(partLocation);
-    }
-    if (fromDate != null) {
-      where.add('timestamp >= ?');
-      args.add(fromDate);
-    }
-    if (toDate != null) {
-      where.add('timestamp <= ?');
-      args.add(toDate);
-    }
-    final rows = await db.query(
-      'photos',
-      where: where.isEmpty ? null : where.join(' AND '),
-      whereArgs: where.isEmpty ? null : args,
-      orderBy: 'timestamp DESC',
-    );
-    return rows.map((e) => InspectionPhoto.fromMap(e)).toList();
+    final maps = await db.query('photos', where: where, whereArgs: whereArgs, orderBy: 'timestamp DESC');
+    return maps.map((m) => InspectionPhoto.fromMap(m)).toList();
   }
 
   Future<void> deletePhoto(int id) async {
@@ -275,46 +196,27 @@ class DBHelper {
     await db.delete('photos', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> updatePhotoTagFields(
-    int id,
-    String partNo,
-    String description,
-    String location,
-    String qty,
-  ) async {
-    final db = await database;
-    await db.update(
-      'photos',
-      {'tagPartNo': partNo, 'tagDescription': description, 'tagLocation': location, 'tagQty': qty},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  // ---------- Stats (for Home dashboard) ----------
   Future<Map<String, int>> getStats() async {
     final db = await database;
-    final aircraftCount = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM aircraft')) ??
-        0;
-    final totalPhotos =
-        Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM photos')) ?? 0;
-    final todayPrefix = DateTime.now().toIso8601String().substring(0, 10);
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day).toIso8601String();
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59).toIso8601String();
+
+    final aircraftCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(DISTINCT aircraftReg) FROM photos')) ?? 0;
+    final totalPhotos = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM photos')) ?? 0;
     final todayPhotos = Sqflite.firstIntValue(await db.rawQuery(
-          'SELECT COUNT(*) FROM photos WHERE timestamp LIKE ?',
-          ['$todayPrefix%'],
-        )) ??
-        0;
+      'SELECT COUNT(*) FROM photos WHERE timestamp >= ? AND timestamp <= ?',
+      [todayStart, todayEnd],
+    )) ?? 0;
     final todayReceiving = Sqflite.firstIntValue(await db.rawQuery(
-          'SELECT COUNT(*) FROM photos WHERE timestamp LIKE ? AND inspectionType = ?',
-          ['$todayPrefix%', 'Receiving'],
-        )) ??
-        0;
+      'SELECT COUNT(*) FROM photos WHERE inspectionType = ? AND timestamp >= ? AND timestamp <= ?',
+      ['Receiving', todayStart, todayEnd],
+    )) ?? 0;
     final todayDispatch = Sqflite.firstIntValue(await db.rawQuery(
-          'SELECT COUNT(*) FROM photos WHERE timestamp LIKE ? AND inspectionType = ?',
-          ['$todayPrefix%', 'Dispatch'],
-        )) ??
-        0;
+      'SELECT COUNT(*) FROM photos WHERE inspectionType = ? AND timestamp >= ? AND timestamp <= ?',
+      ['Dispatch', todayStart, todayEnd],
+    )) ?? 0;
+
     return {
       'aircraft': aircraftCount,
       'totalPhotos': totalPhotos,
