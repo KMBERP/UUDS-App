@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/build_info.dart';
 import '../utils/ocr_util.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
@@ -340,7 +341,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       border: Border.all(color: Colors.orange.withOpacity(0.3)),
                     ),
                     child: Text(
-                      'Reason: ${_galleryPublishErrors.join('; ')}',
+                      'Reason: ${_galleryPublishErrors.join('; ')}\nBuild: $kBuildId',
                       style: const TextStyle(fontSize: 11, color: Colors.deepOrange),
                     ),
                   ),

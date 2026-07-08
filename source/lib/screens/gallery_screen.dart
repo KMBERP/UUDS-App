@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/backup_util.dart';
+import '../utils/build_info.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
 import '../utils/theme.dart';
@@ -508,7 +509,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           },
                         ),
             ),
-            // Footer: shows where all photos are stored on the device.
+            // Footer: shows where all photos are stored on the device, and
+            // which build this is (for confirming a fresh CI build is
+            // actually installed when troubleshooting the Gallery mirror).
             if (_storagePathLabel.isNotEmpty)
               Container(
                 width: double.infinity,
@@ -520,7 +523,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Saved at: $_storagePathLabel  ·  also in Gallery/Photos under Pictures/UUDS',
+                        'Saved at: $_storagePathLabel  ·  also in Gallery/Photos under Pictures/UUDS  ·  Build: $kBuildId',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 10.5, color: kPrimary.withOpacity(0.8)),
