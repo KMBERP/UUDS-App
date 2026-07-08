@@ -16,8 +16,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late final Animation<double> _scaleIn;
 
   late final AnimationController _flyController;
+  late final AnimationController _sloganController;
 
   static const int _waitSeconds = 5;
+  static const String _slogan = 'Auto-organize aircraft part photos and generate emails automatically';
 
   @override
   void initState() {
@@ -36,6 +38,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
     _flyController.forward();
 
+    // Slogan types itself out letter-by-letter, starting just after the
+    // logo/title finish fading in, then holds (with a blinking cursor)
+    // for the rest of the splash wait.
+    _sloganController = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200));
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _sloganController.forward();
+    });
+
     Future.delayed(const Duration(seconds: _waitSeconds), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(fadeSlideRoute(const HomeScreen()));
@@ -47,6 +57,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   void dispose() {
     _textController.dispose();
     _flyController.dispose();
+    _sloganController.dispose();
     super.dispose();
   }
 
@@ -81,6 +92,57 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     'Receiving & Despatching\nRecords',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF3A3A3A), fontSize: 19, fontWeight: FontWeight.w600, height: 1.3),
+                  ),
+                  const SizedBox(height: 12),
+                  // Stylish animated slogan: types itself out, then blinks
+                  // a cursor, framed with a soft amber accent underline.
+                  AnimatedBuilder(
+                    animation: _sloganController,
+                    builder: (context, child) {
+                      final t = _sloganController.value.clamp(0.0, 1.0);
+                      final visibleChars = (_slogan.length * t).round();
+                      final visibleText = _slogan.substring(0, visibleChars);
+                      final done = visibleChars >= _slogan.length;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Column(
+                          children: [
+                            RichText(
+                              textAlign: TextAlign.center,
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  color: kAccent,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  fontStyle: FontStyle.italic,
+                                  letterSpacing: 0.3,
+                                  height: 1.35,
+                                ),
+                                children: [
+                                  TextSpan(text: visibleText),
+                                  if (!done)
+                                    const TextSpan(
+                                      text: '▎',
+                                      style: TextStyle(fontWeight: FontWeight.w900, fontStyle: FontStyle.normal),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (done) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 46,
+                                height: 2,
+                                decoration: BoxDecoration(
+                                  color: kAccent.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   Expanded(

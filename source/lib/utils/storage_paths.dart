@@ -66,28 +66,47 @@ class StoragePaths {
   /// Mirrors an already-saved photo into the device's public Gallery via
   /// MediaStore, nested exactly as
   /// `Pictures/UUDS/<Aircraft>/<InspectionType>/<Location>/<fileName>`.
-  /// Returns true if the mirror copy was written successfully. Failure here
-  /// is non-fatal — the private working copy (used by the app itself) is
-  /// always saved regardless of this result.
-  static Future<bool> publishToGallery({
+  /// Returns the real success/error info from the native side so a failure
+  /// can be shown to the user instead of silently disappearing. Failure
+  /// here is non-fatal either way — the private working copy (used by the
+  /// app itself) is always saved regardless of this result.
+  static Future<GalleryPublishResult> publishToGallery({
     required String sourcePath,
     required String aircraftReg,
     required String inspectionTypeLabel,
     required String location,
     required String fileName,
   }) async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid) {
+      return const GalleryPublishResult(success: false, error: 'Not on Android');
+    }
     try {
-      final ok = await _mediaChannel.invokeMethod<bool>('publishToGallery', {
+      final raw = await _mediaChannel.invokeMethod('publishToGallery', {
         'sourcePath': sourcePath,
         'aircraft': _sanitize(aircraftReg),
         'type': _sanitize(inspectionTypeLabel),
         'location': _sanitize(location),
         'fileName': fileName,
       });
-      return ok ?? false;
-    } catch (_) {
-      return false;
+      if (raw is Map) {
+        final success = raw['success'] == true;
+        final error = raw['error'] as String?;
+        return GalleryPublishResult(success: success, error: success ? null : error);
+      }
+      // Older builds returned a bare bool - stay compatible with those too.
+      if (raw is bool) {
+        return GalleryPublishResult(success: raw, error: raw ? null : 'Unknown error (legacy response)');
+      }
+      return const GalleryPublishResult(success: false, error: 'Unexpected response from native channel');
+    } catch (e) {
+      return GalleryPublishResult(success: false, error: e.toString());
     }
   }
+}
+
+/// Result of trying to mirror one photo into the public Gallery.
+class GalleryPublishResult {
+  final bool success;
+  final String? error;
+  const GalleryPublishResult({required this.success, this.error});
 }

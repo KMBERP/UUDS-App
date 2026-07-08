@@ -37,6 +37,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<InspectionPhoto> _sessionPhotos = []; // newest first
   final TextEditingController _remarksController = TextEditingController();
   int _galleryPublishFailures = 0;
+  final List<String> _galleryPublishErrors = [];
 
   @override
   void initState() {
@@ -110,7 +111,12 @@ class _CameraScreenState extends State<CameraScreen> {
         location: widget.partLocation.name,
         fileName: fileName,
       );
-      if (!published) _galleryPublishFailures++;
+      if (!published.success) {
+        _galleryPublishFailures++;
+        if (published.error != null && !_galleryPublishErrors.contains(published.error)) {
+          _galleryPublishErrors.add(published.error!);
+        }
+      }
 
       final record = InspectionPhoto(
         employeeName: widget.employee.name,
@@ -323,6 +329,22 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ],
                 ),
+                if (publishedCount != photoCount && _galleryPublishErrors.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'Reason: ${_galleryPublishErrors.join('; ')}',
+                      style: const TextStyle(fontSize: 11, color: Colors.deepOrange),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
