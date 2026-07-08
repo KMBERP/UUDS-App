@@ -189,19 +189,28 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                         right: 0,
                         bottom: 0,
                         child: Container(
+                          width: double.infinity,
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
-                              colors: [Colors.black.withOpacity(0.65), Colors.black.withOpacity(0.0)],
+                              colors: [Colors.black.withOpacity(0.7), Colors.black.withOpacity(0.0)],
                             ),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(p.aircraftReg, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                              Text(p.partLocation, style: const TextStyle(color: Colors.white, fontSize: 12.5)),
+                              Text(
+                                'A/C: ${p.aircraftReg}',
+                                style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Location: ${p.partLocation}',
+                                style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                              ),
                             ],
                           ),
                         ),

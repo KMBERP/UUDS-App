@@ -2,23 +2,23 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
+import 'storage_paths.dart';
 
 class BackupUtil {
   /// Creates a zip containing only the selected aircraft/location photo
   /// folders (plus the full database for safety), saves it under
-  /// .../Backups/ (grab it via USB cable + file manager on a PC), and
-  /// opens the share sheet so it can also be sent to Drive, WhatsApp, etc.
+  /// UUDS/Backups/ in public storage (grab it via USB cable + file manager
+  /// on a PC, and it survives an app uninstall), and opens the share sheet
+  /// so it can also be sent to Drive, WhatsApp, etc.
   static Future<String> createSelectiveBackupAndShare(
     Set<String> aircraftRegs,
     Set<String> locations,
   ) async {
-    final base = await getExternalStorageDirectory();
-    final photosRoot = Directory('${base!.path}/UUDS_Aero_Photos');
-    final backupsDir = Directory('${base.path}/Backups');
-    if (!await backupsDir.exists()) await backupsDir.create(recursive: true);
+    final hasAccess = await StoragePaths.hasPublicStorageAccess();
+    final photosRoot = hasAccess ? await StoragePaths.publicRoot() : await StoragePaths.fallbackRoot();
+    final backupsDir = await StoragePaths.backupsDirectory();
 
     final dbPath = await DBHelper.instance.dbFilePath;
     final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
@@ -30,6 +30,7 @@ class BackupUtil {
       await for (final aircraftEntity in photosRoot.list()) {
         if (aircraftEntity is! Directory) continue;
         final aircraftName = p.basename(aircraftEntity.path);
+        if (aircraftName == 'Backups' || aircraftName == 'Reports') continue;
         if (!aircraftRegs.contains(aircraftName)) continue;
 
         await for (final typeEntity in aircraftEntity.list()) {

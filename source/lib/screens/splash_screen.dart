@@ -16,9 +16,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late final Animation<double> _scaleIn;
 
   late final AnimationController _dotsController;
-  int _activeDot = 0;
 
-  static const int _totalDots = 5;
   static const int _waitSeconds = 5;
 
   @override
@@ -31,16 +29,11 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
     _textController.forward();
 
-    // 5 dots lighting up one by one across the 5 second wait.
+    // Aircraft icon grows and flies left-to-right across the 5 second wait.
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _waitSeconds),
-    )..addListener(() {
-        final newDot = (_dotsController.value * _totalDots).floor().clamp(0, _totalDots - 1);
-        if (newDot != _activeDot) {
-          setState(() => _activeDot = newDot);
-        }
-      });
+    );
     _dotsController.forward();
 
     Future.delayed(const Duration(seconds: _waitSeconds), () {
@@ -103,22 +96,36 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // 5-dot loading indicator - lights up progressively during the wait.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(_totalDots, (i) {
-                      final lit = i <= _activeDot;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: lit ? 12 : 8,
-                        height: lit ? 12 : 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: lit ? kPrimary : kPrimary.withOpacity(0.25),
-                        ),
-                      );
-                    }),
+                  // Loading indicator: a small aircraft icon that grows and
+                  // flies from left to right as the wait progresses.
+                  SizedBox(
+                    height: 34,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return AnimatedBuilder(
+                          animation: _dotsController,
+                          builder: (context, child) {
+                            final t = Curves.easeInOut.transform(_dotsController.value.clamp(0.0, 1.0));
+                            const minSize = 14.0;
+                            const maxSize = 30.0;
+                            final size = minSize + (maxSize - minSize) * t;
+                            final maxX = constraints.maxWidth - size;
+                            return Stack(
+                              children: [
+                                Positioned(
+                                  left: maxX * t,
+                                  top: (34 - size) / 2,
+                                  child: Transform.rotate(
+                                    angle: -0.785398, // -45°: point the icon rightward
+                                    child: Icon(Icons.flight, size: size, color: kPrimary),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 14),
                   const Divider(height: 1, color: Color(0xFFD8D8D8)),

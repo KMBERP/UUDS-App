@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/storage_paths.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/pressable_button.dart';
@@ -182,9 +182,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         excelFile.delete('Sheet1');
       }
 
-      final base = await getExternalStorageDirectory();
-      final reportsDir = Directory('${base!.path}/UUDS_Aero_Photos/Reports');
-      if (!await reportsDir.exists()) await reportsDir.create(recursive: true);
+      final reportsDir = await StoragePaths.reportsDirectory();
       final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = '${_reportTitle.replaceAll(' ', '_')}_$stamp.xlsx';
       final file = File('${reportsDir.path}/$fileName');

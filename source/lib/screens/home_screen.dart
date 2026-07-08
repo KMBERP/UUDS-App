@@ -30,10 +30,26 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _searched = false;
   List<Employee> _suggestions = [];
 
+  static const _lastIdKey = 'lastEmployeeId';
+  DateTime? _lastBackPress;
+
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _restoreLastEmployee();
+  }
+
+  Future<void> _restoreLastEmployee() async {
+    final savedId = await DBHelper.instance.getSetting(_lastIdKey);
+    if (savedId == null || savedId.isEmpty) return;
+    final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
+    if (!mounted || emp == null) return;
+    setState(() {
+      _matchedEmployee = emp;
+      _searched = true;
+      _idController.text = emp.idNumber;
+    });
   }
 
   @override
@@ -63,10 +79,13 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _matchedEmployee = emp;
       _searched = true;
+      // Don't bother showing a suggestions list of just the one exact match.
       _suggestions = (emp != null && suggestions.length <= 1) ? [] : suggestions;
     });
     if (emp != null) {
+      // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
+      DBHelper.instance.setSetting(_lastIdKey, emp.idNumber);
     }
   }
 
@@ -78,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _idController.text = e.idNumber;
     });
     FocusManager.instance.primaryFocus?.unfocus();
+    DBHelper.instance.setSetting(_lastIdKey, e.idNumber);
   }
 
   Future<void> _pickFromList() async {
@@ -101,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _searched = true;
         _idController.text = chosen.idNumber;
       });
+      DBHelper.instance.setSetting(_lastIdKey, chosen.idNumber);
     }
   }
 
@@ -111,89 +132,79 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<bool> _onWillPop() async {
-    final shouldExit = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Exit App?'),
-        content: const Text('Do you want to exit the app?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Yes, Exit')),
-        ],
-      ),
-    );
-    return shouldExit ?? false;
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? result) async {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        final shouldPop = await _onWillPop();
-        if (shouldPop) {
+        final now = DateTime.now();
+        if (_lastBackPress == null || now.difference(_lastBackPress!) > const Duration(seconds: 2)) {
+          _lastBackPress = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Press back again to exit'), duration: Duration(seconds: 2)),
+          );
+        } else {
           SystemNavigator.pop();
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
-        bottomNavigationBar: const AppBottomNav(current: AppTab.home),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset('assets/branding/home_background.jpg', fit: BoxFit.cover),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.65),
-                    Colors.black.withOpacity(0.25),
-                    Colors.black.withOpacity(0.75),
-                  ],
-                  stops: const [0.0, 0.35, 1.0],
-                ),
+      backgroundColor: Colors.black,
+      bottomNavigationBar: const AppBottomNav(current: AppTab.home),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset('assets/branding/home_background.jpg', fit: BoxFit.cover),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.65),
+                  Colors.black.withOpacity(0.25),
+                  Colors.black.withOpacity(0.75),
+                ],
+                stops: const [0.0, 0.35, 1.0],
               ),
             ),
-            SafeArea(
-              child: RefreshIndicator(
-                onRefresh: _loadStats,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-                  children: [
-                    const Text(
-                      'WELCOME TO',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: kHeaderBlue, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'UUDS PARTS INSPECTION',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: kHeaderBlue, fontSize: 22, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Streamline your inspections efficiently',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: kHeaderBlue, fontSize: 12.5, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 20),
-                    _statsCard(),
-                    const SizedBox(height: 72),
-                    _inspectorCard(),
-                    const SizedBox(height: 72),
-                    _inspectionTypeSection(),
-                    const SizedBox(height: 16),
-                  ],
-                ),
+          ),
+          SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _loadStats,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+                children: [
+                  const Text(
+                    'WELCOME TO',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kHeaderBlue, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'UUDS PARTS INSPECTION',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kHeaderBlue, fontSize: 22, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Streamline your inspections efficiently',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: kHeaderBlue, fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 20),
+                  _statsCard(),
+                  const SizedBox(height: 72),
+                  _inspectorCard(),
+                  const SizedBox(height: 72),
+                  _inspectionTypeSection(),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
       ),
     );
   }
@@ -362,9 +373,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: InspectionTypeCard(
                 title: 'RECEIVING PARTS',
                 subtitle: 'Record & inspect incoming Aircraft Parts',
-                icon: Icons.flight_land,
                 color: kPrimary,
                 enabled: enabled,
+                icon: Icons.call_received_rounded,
                 onTap: () => _startInspection(InspectionType.receiving),
               ),
             ),
@@ -373,9 +384,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: InspectionTypeCard(
                 title: 'DESPATCHING PARTS',
                 subtitle: 'Verify & log outgoing Aircraft Parts',
-                icon: Icons.flight_takeoff,
                 color: kDispatch,
                 enabled: enabled,
+                icon: Icons.call_made_rounded,
                 onTap: () => _startInspection(InspectionType.dispatch),
               ),
             ),

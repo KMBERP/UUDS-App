@@ -3,19 +3,19 @@ import 'package:flutter/material.dart';
 class InspectionTypeCard extends StatefulWidget {
   final String title;
   final String subtitle;
-  final IconData? icon;
   final Color color;
   final bool enabled;
   final VoidCallback onTap;
+  final IconData icon;
 
   const InspectionTypeCard({
     super.key,
     required this.title,
     required this.subtitle,
-    this.icon,
     required this.color,
     required this.onTap,
     this.enabled = true,
+    this.icon = Icons.inventory_2_rounded,
   });
 
   @override
@@ -54,8 +54,8 @@ class _InspectionTypeCardState extends State<InspectionTypeCard> with SingleTick
           builder: (context, child) {
             final borderOpacity = widget.enabled ? (0.3 + 0.7 * _borderController.value) : 0.15;
             return Container(
-              height: 130,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+              height: 132,
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.white.withOpacity(borderOpacity), width: 2),
@@ -72,19 +72,25 @@ class _InspectionTypeCardState extends State<InspectionTypeCard> with SingleTick
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (widget.icon != null)
-                    Icon(widget.icon, color: Colors.white.withOpacity(0.95), size: 28),
-                  if (widget.icon != null) const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.22),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(widget.icon, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     widget.title,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   Text(
                     widget.subtitle,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11.5),
                   ),
                 ],
               ),

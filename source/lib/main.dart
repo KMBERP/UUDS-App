@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/splash_screen.dart';
+import 'utils/storage_paths.dart';
 import 'utils/theme.dart';
 
 void main() {
@@ -24,6 +25,11 @@ class _UudsPartsAppState extends State<UudsPartsApp> {
 
   Future<void> _requestPermissions() async {
     await Permission.camera.request();
+    // "All files access" is what lets the app write into a custom nested
+    // UUDS/Aircraft/Type/Location folder under public storage, so photos
+    // are visible in the Gallery/file manager and survive an uninstall.
+    // If declined, the app still works using its private folder instead.
+    await StoragePaths.ensurePublicStorageAccess();
   }
 
   @override
