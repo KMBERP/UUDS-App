@@ -98,6 +98,14 @@ class StoragePaths {
         return GalleryPublishResult(success: raw, error: raw ? null : 'Unknown error (legacy response)');
       }
       return const GalleryPublishResult(success: false, error: 'Unexpected response from native channel');
+    } on MissingPluginException {
+      return const GalleryPublishResult(
+        success: false,
+        error: 'Native photo-store module not found in this build. '
+            'This APK was built before (or without) the native mirror code - '
+            'rebuild from the latest workflow run and fully uninstall the old '
+            'app before installing the new one.',
+      );
     } catch (e) {
       return GalleryPublishResult(success: false, error: e.toString());
     }
