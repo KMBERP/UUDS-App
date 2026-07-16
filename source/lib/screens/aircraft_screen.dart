@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/session.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -21,6 +22,10 @@ class _AircraftScreenState extends State<AircraftScreen> {
   List<Aircraft> _aircraft = [];
   bool _loading = true;
 
+  // Admin-only bulk delete.
+  bool _bulkMode = false;
+  final Set<int> _selectedIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +38,40 @@ class _AircraftScreenState extends State<AircraftScreen> {
       _aircraft = list;
       _loading = false;
     });
+  }
+
+  void _toggleBulkMode() {
+    setState(() {
+      _bulkMode = !_bulkMode;
+      _selectedIds.clear();
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedIds.length} aircraft?'),
+        content: const Text('This removes the selected aircraft and their own location lists. Past photo records are kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    for (final id in _selectedIds) {
+      await DBHelper.instance.deleteAircraft(id);
+    }
+    setState(() {
+      _bulkMode = false;
+      _selectedIds.clear();
+    });
+    await _load();
   }
 
   List<TextInputFormatter> get _letterFormatters => [
@@ -160,7 +199,17 @@ class _AircraftScreenState extends State<AircraftScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.type.label} — Select Aircraft')),
+      appBar: AppBar(
+        title: Text(_bulkMode ? '${_selectedIds.length} selected' : '${widget.type.label} — Select Aircraft'),
+        actions: [
+          if (Session.isAdmin)
+            IconButton(
+              tooltip: _bulkMode ? 'Cancel' : 'Delete multiple',
+              icon: Icon(_bulkMode ? Icons.close : Icons.delete_sweep_outlined),
+              onPressed: _toggleBulkMode,
+            ),
+        ],
+      ),
       bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
@@ -185,25 +234,48 @@ class _AircraftScreenState extends State<AircraftScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (ctx, i) {
                             final a = _aircraft[i];
+                            final selected = _selectedIds.contains(a.id);
                             return Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
+                                border: _bulkMode && selected ? Border.all(color: Colors.red, width: 1.5) : null,
                                 boxShadow: [
                                   BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2)),
                                 ],
                               ),
                               child: ListTile(
-                                leading: CircleAvatar(backgroundColor: kPrimary.withOpacity(0.1), child: Icon(Icons.flight, color: kPrimary)),
+                                leading: _bulkMode
+                                    ? Checkbox(
+                                        value: selected,
+                                        onChanged: (_) => setState(() {
+                                          if (selected) {
+                                            _selectedIds.remove(a.id);
+                                          } else {
+                                            _selectedIds.add(a.id!);
+                                          }
+                                        }),
+                                      )
+                                    : CircleAvatar(backgroundColor: kPrimary.withOpacity(0.1), child: Icon(Icons.flight, color: kPrimary)),
                                 title: Text(a.regNo, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editAircraft(a)),
-                                    const Icon(Icons.chevron_right),
-                                  ],
-                                ),
-                                onTap: () => _goNext(a),
+                                trailing: _bulkMode
+                                    ? null
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editAircraft(a)),
+                                          const Icon(Icons.chevron_right),
+                                        ],
+                                      ),
+                                onTap: _bulkMode
+                                    ? () => setState(() {
+                                          if (selected) {
+                                            _selectedIds.remove(a.id);
+                                          } else {
+                                            _selectedIds.add(a.id!);
+                                          }
+                                        })
+                                    : () => _goNext(a),
                               ),
                             );
                           },
@@ -211,12 +283,21 @@ class _AircraftScreenState extends State<AircraftScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: PressableButton(
-                icon: Icons.add_circle_outline_rounded,
-                label: 'Add New Aircraft',
-                height: 60,
-                onPressed: _addAircraftDialog,
-              ),
+              child: _bulkMode
+                  ? PressableButton(
+                      icon: Icons.delete_forever_rounded,
+                      label: _selectedIds.isEmpty ? 'Select aircraft to delete' : 'Delete Selected (${_selectedIds.length})',
+                      height: 60,
+                      color: Colors.red,
+                      enabled: _selectedIds.isNotEmpty,
+                      onPressed: _deleteSelected,
+                    )
+                  : PressableButton(
+                      icon: Icons.add_circle_outline_rounded,
+                      label: 'Add New Aircraft',
+                      height: 60,
+                      onPressed: _addAircraftDialog,
+                    ),
             ),
           ],
         ),

@@ -63,7 +63,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // IgnorePointer means nothing on this screen can react to taps at all -
+    // so tapping the splash screen can never pause the animation or delay
+    // the automatic hand-off to Home; it always proceeds on its own after
+    // _waitSeconds regardless of how many times it's tapped.
+    return IgnorePointer(
+      child: Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       body: SafeArea(
         child: FadeTransition(
@@ -296,6 +301,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             ),
           ),
         ),
+      ),
       ),
     );
   }

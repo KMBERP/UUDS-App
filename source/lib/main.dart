@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/splash_screen.dart';
+import 'utils/inactivity_guard.dart';
 import 'utils/theme.dart';
 
 void main() {
@@ -16,6 +17,8 @@ class UudsPartsApp extends StatefulWidget {
 }
 
 class _UudsPartsAppState extends State<UudsPartsApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
   void initState() {
     super.initState();
@@ -33,10 +36,21 @@ class _UudsPartsAppState extends State<UudsPartsApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'UUDS Aircraft Parts Inspection',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const SplashScreen(),
+      // Wrapping here (rather than around MaterialApp itself) puts the
+      // guard inside the Navigator's overlay, so it sees touch activity on
+      // every screen/route in the app, not just whichever one was current
+      // when it was built.
+      builder: (context, child) {
+        return InactivityGuard(
+          navigatorKey: _navigatorKey,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }

@@ -31,7 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _searched = false;
   List<Employee> _suggestions = [];
 
-  static const _lastIdKey = 'lastEmployeeId';
   DateTime? _lastBackPress;
 
   @override
@@ -53,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _restoreLastEmployee() async {
-    final savedId = await DBHelper.instance.getSetting(_lastIdKey);
+    final savedId = await DBHelper.instance.getSetting(Session.lastEmployeeIdKey);
     if (savedId == null || savedId.isEmpty) return;
     final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
     if (!mounted || emp == null) return;
@@ -99,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // ID matched - auto-dismiss the keyboard.
       FocusManager.instance.primaryFocus?.unfocus();
       Session.login(emp);
-      DBHelper.instance.setSetting(_lastIdKey, emp.idNumber);
+      DBHelper.instance.setSetting(Session.lastEmployeeIdKey, emp.idNumber);
     }
   }
 
@@ -112,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     FocusManager.instance.primaryFocus?.unfocus();
     Session.login(e);
-    DBHelper.instance.setSetting(_lastIdKey, e.idNumber);
+    DBHelper.instance.setSetting(Session.lastEmployeeIdKey, e.idNumber);
   }
 
   Future<void> _pickFromList() async {
@@ -137,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _idController.text = chosen.idNumber;
       });
       Session.login(chosen);
-      DBHelper.instance.setSetting(_lastIdKey, chosen.idNumber);
+      DBHelper.instance.setSetting(Session.lastEmployeeIdKey, chosen.idNumber);
     }
   }
 
@@ -162,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         } else {
           Session.logout();
-          DBHelper.instance.setSetting(_lastIdKey, '');
+          DBHelper.instance.setSetting(Session.lastEmployeeIdKey, '');
           setState(() {
             _matchedEmployee = null;
             _searched = false;

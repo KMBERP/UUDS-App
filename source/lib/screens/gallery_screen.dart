@@ -176,9 +176,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Future<Map<String, Set<String>>?> _showBackupSelectionDialog() async {
     final aircraftList = await DBHelper.instance.getAircraft();
-    final locationList = await DBHelper.instance.getPartLocations();
+    final locationNames = await DBHelper.instance.getAllDistinctPartLocationNames();
     Set<String> selectedAircraft = aircraftList.map((a) => a.regNo).toSet();
-    Set<String> selectedLocations = locationList.map((l) => l.name).toSet();
+    Set<String> selectedLocations = locationNames.toSet();
 
     if (!mounted) return null;
     return showDialog<Map<String, Set<String>>>(
@@ -227,22 +227,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       TextButton(
                         onPressed: () => setDialogState(() {
                           selectedLocations =
-                              selectedLocations.length == locationList.length ? {} : locationList.map((l) => l.name).toSet();
+                              selectedLocations.length == locationNames.length ? {} : locationNames.toSet();
                         }),
                         child: const Text('Toggle All'),
                       ),
                     ],
                   ),
-                  ...locationList.map((l) => CheckboxListTile(
+                  ...locationNames.map((name) => CheckboxListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(l.name),
-                        value: selectedLocations.contains(l.name),
+                        title: Text(name),
+                        value: selectedLocations.contains(name),
                         onChanged: (v) => setDialogState(() {
                           if (v == true) {
-                            selectedLocations.add(l.name);
+                            selectedLocations.add(name);
                           } else {
-                            selectedLocations.remove(l.name);
+                            selectedLocations.remove(name);
                           }
                         }),
                       )),

@@ -24,12 +24,16 @@ class Aircraft {
 
 class PartLocation {
   final int? id;
+  final int aircraftId;
   final String name;
-  PartLocation({this.id, required this.name});
+  PartLocation({this.id, required this.aircraftId, required this.name});
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name};
-  factory PartLocation.fromMap(Map<String, dynamic> m) =>
-      PartLocation(id: m['id'] as int?, name: m['name'] as String);
+  Map<String, dynamic> toMap() => {'id': id, 'aircraftId': aircraftId, 'name': name};
+  factory PartLocation.fromMap(Map<String, dynamic> m) => PartLocation(
+        id: m['id'] as int?,
+        aircraftId: m['aircraftId'] as int,
+        name: m['name'] as String,
+      );
 }
 
 enum InspectionType { receiving, dispatch }

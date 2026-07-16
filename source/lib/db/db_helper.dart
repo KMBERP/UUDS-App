@@ -48,7 +48,7 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE employees(
@@ -63,10 +63,15 @@ class DBHelper {
             regNo TEXT UNIQUE NOT NULL
           )
         ''');
+        // Each row belongs to exactly one aircraft (aircraftId), so adding,
+        // renaming, or removing a location while working on one aircraft
+        // can never affect any other aircraft's list.
         await db.execute('''
           CREATE TABLE part_locations(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
+            aircraftId INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            UNIQUE(aircraftId, name)
           )
         ''');
         await db.execute('''
@@ -91,9 +96,10 @@ class DBHelper {
             tagQty TEXT DEFAULT ''
           )
         ''');
-        for (final loc in kDefaultPartLocations) {
-          await db.insert('part_locations', {'name': loc});
-        }
+        // Note: part_locations is no longer seeded here - there's no
+        // aircraft to attach a location to yet. Each aircraft gets its own
+        // copy of kDefaultPartLocations the moment it's added; see
+        // addAircraft() below.
         for (final entry in InspectorRoster.seed) {
           await db.insert('employees', {'name': entry.$1, 'idNumber': entry.$2},
               conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -129,6 +135,48 @@ class DBHelper {
             await db.insert('part_locations', {'name': loc},
                 conflictAlgorithm: ConflictAlgorithm.ignore);
           }
+        }
+        if (oldVersion < 6) {
+          // Part locations used to be one single shared table: editing,
+          // renaming, or deleting a location while working on one aircraft
+          // silently changed the list for every other aircraft too, because
+          // they were all reading and writing the exact same rows. Give
+          // each aircraft its own independent set of locations instead.
+          final aircraftRows = await db.query('aircraft');
+          final oldLocationRows = await db.query('part_locations');
+
+          await db.execute('''
+            CREATE TABLE part_locations_new(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              aircraftId INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              UNIQUE(aircraftId, name)
+            )
+          ''');
+
+          // Every aircraft that already existed keeps a full copy of
+          // whatever was in the old shared list, so nobody loses a location
+          // they were already using - it just becomes independently
+          // editable per aircraft from here on.
+          for (final ac in aircraftRows) {
+            final aircraftId = ac['id'] as int;
+            final namesToSeed = oldLocationRows.isNotEmpty
+                ? oldLocationRows.map((r) => r['name'] as String)
+                : kDefaultPartLocations;
+            for (final name in namesToSeed) {
+              await db.insert('part_locations_new', {'aircraftId': aircraftId, 'name': name},
+                  conflictAlgorithm: ConflictAlgorithm.ignore);
+            }
+          }
+
+          await db.execute('DROP TABLE part_locations');
+          await db.execute('ALTER TABLE part_locations_new RENAME TO part_locations');
+
+          // Paresh Abraham has left / should no longer appear as a
+          // selectable inspector. Past photos already recorded under his
+          // name are left untouched (they're just historical text, not a
+          // reference to this row), only the active roster entry goes.
+          await db.delete('employees', where: 'UPPER(TRIM(name)) = ?', whereArgs: ['PARESH ABRAHAM']);
         }
       },
     );
@@ -232,6 +280,13 @@ class DBHelper {
       final existing = await db.query('aircraft', where: 'regNo = ?', whereArgs: [regNo.trim()]);
       return Aircraft.fromMap(existing.first);
     }
+    // Brand new aircraft: give it its own copy of the standard location
+    // list to start from. From this point on, edits/additions/deletions
+    // only ever touch this aircraft's own rows.
+    for (final loc in kDefaultPartLocations) {
+      await db.insert('part_locations', {'aircraftId': id, 'name': loc},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
     return Aircraft(id: id, regNo: regNo.trim());
   }
 
@@ -243,24 +298,36 @@ class DBHelper {
   Future<void> deleteAircraft(int id) async {
     final db = await database;
     await db.delete('aircraft', where: 'id = ?', whereArgs: [id]);
+    await db.delete('part_locations', where: 'aircraftId = ?', whereArgs: [id]);
   }
 
-  // ---------- Part Locations ----------
-  Future<List<PartLocation>> getPartLocations() async {
+  // ---------- Part Locations (each row belongs to one aircraft) ----------
+  Future<List<PartLocation>> getPartLocations(int aircraftId) async {
     final db = await database;
-    final rows = await db.query('part_locations', orderBy: 'name ASC');
+    final rows = await db.query('part_locations',
+        where: 'aircraftId = ?', whereArgs: [aircraftId], orderBy: 'name ASC');
     return rows.map((e) => PartLocation.fromMap(e)).toList();
   }
 
-  Future<PartLocation> addPartLocation(String name) async {
+  /// Distinct location names used across every aircraft combined - for
+  /// cross-aircraft filter UIs (like the backup selection dialog) that
+  /// aren't about editing any one aircraft's own location list.
+  Future<List<String>> getAllDistinctPartLocationNames() async {
     final db = await database;
-    final id = await db.insert('part_locations', {'name': name.trim()},
+    final rows = await db.query('part_locations', distinct: true, columns: ['name'], orderBy: 'name ASC');
+    return rows.map((e) => e['name'] as String).toList();
+  }
+
+  Future<PartLocation> addPartLocation(int aircraftId, String name) async {
+    final db = await database;
+    final id = await db.insert('part_locations', {'aircraftId': aircraftId, 'name': name.trim()},
         conflictAlgorithm: ConflictAlgorithm.ignore);
     if (id == 0) {
-      final existing = await db.query('part_locations', where: 'name = ?', whereArgs: [name.trim()]);
+      final existing = await db.query('part_locations',
+          where: 'aircraftId = ? AND name = ?', whereArgs: [aircraftId, name.trim()]);
       return PartLocation.fromMap(existing.first);
     }
-    return PartLocation(id: id, name: name.trim());
+    return PartLocation(id: id, aircraftId: aircraftId, name: name.trim());
   }
 
   Future<void> updatePartLocation(int id, String newName) async {

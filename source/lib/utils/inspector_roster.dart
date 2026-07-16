@@ -8,7 +8,6 @@ class InspectorRoster {
     ('CHARITH NIRMAL', '829'),
     ('VINCE KAVEEN', '288'),
     ('ANUSHKA SRIMAL', '129'),
-    ('PARESH ABRAHAM', ''),
     ('KRISHEN MADUSHA', '418'),
     ('MANJULA JANAKA RANATHUNGA', '921'),
     ('JANATH BINENDRA', '669'),
