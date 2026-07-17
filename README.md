@@ -69,6 +69,29 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 5 (fixed: reinstalling wouldn't update the app)
+**Root cause:** every CI build was signing the release APK with a random, throwaway debug
+key that GitHub's build server generates fresh on every single run (nothing persists it
+between runs). Android treats an app signed with a different key as a different app, so it
+refused to install "as an update" over the one already on the phone — the only way in was to
+uninstall the old one first.
+
+**Fix:** generated one permanent signing key (`signing/uuds-release.keystore.jks`, committed
+to the repo, valid 30 years) and wired it into the build so every future build — no matter
+how many times CI runs — signs with the exact same key. From this build onward, installing a
+newer APK over the current one will update it in place, no uninstall needed.
+
+**⚠️ Important — do not delete the `signing/` folder from the repo.** It's the one and only
+copy of the signing key. If it's ever lost, every future build would need a brand-new key
+again, meaning one more forced uninstall to move to it (and there's no way to recover
+anything signed with the lost key). Since this file now lives in your GitHub repo, GitHub
+itself is your backup — just don't delete or overwrite that folder.
+
+Note: today's update to fix this is itself a one-time exception — installing today's APK
+over your current one will still need one uninstall (since today's is the first build using
+the new permanent key, and it doesn't match whatever key your currently-installed copy has).
+Every build after today should update normally.
+
 ## Update 4 (admin rights, bulk delete, splash tap fix)
 1. **Staff ID 476 (Khurram Munir) is now an admin.** Admin status unlocks bulk-delete on the
    Aircraft and Part Location screens (a delete-multiple icon appears in the app bar only for
