@@ -18,6 +18,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late final AnimationController _flyController;
   late final AnimationController _sloganController;
 
+  bool _paused = false;
+
   static const int _waitSeconds = 5;
   static const String _slogan = 'Auto-organize aircraft part photos and generate emails automatically';
 
@@ -32,10 +34,19 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _textController.forward();
 
     // Aircraft icon grows and flies left-to-right across the 5 second wait.
+    // Handing off to Home is tied to this same controller reaching the end
+    // (rather than a separate fixed timer), so tapping the icon to pause it
+    // also holds the app on the splash screen instead of moving on
+    // underneath the frozen icon.
     _flyController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: _waitSeconds),
     );
+    _flyController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        Navigator.of(context).pushReplacement(fadeSlideRoute(const HomeScreen()));
+      }
+    });
     _flyController.forward();
 
     // Slogan types itself out letter-by-letter, starting just after the
@@ -43,12 +54,22 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     // for the rest of the splash wait.
     _sloganController = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200));
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) _sloganController.forward();
+      if (mounted && !_paused) _sloganController.forward();
     });
+  }
 
-    Future.delayed(const Duration(seconds: _waitSeconds), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(fadeSlideRoute(const HomeScreen()));
+  /// Tapping the aircraft icon toggles pause: the icon freezes exactly
+  /// where it is (and the slogan typing pauses too), and the automatic
+  /// hand-off to Home holds until it's tapped again to resume.
+  void _toggleIconPause() {
+    setState(() {
+      _paused = !_paused;
+      if (_paused) {
+        _flyController.stop();
+        _sloganController.stop();
+      } else {
+        _flyController.forward();
+        _sloganController.forward();
       }
     });
   }
@@ -63,12 +84,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    // IgnorePointer means nothing on this screen can react to taps at all -
-    // so tapping the splash screen can never pause the animation or delay
-    // the automatic hand-off to Home; it always proceeds on its own after
-    // _waitSeconds regardless of how many times it's tapped.
-    return IgnorePointer(
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       body: SafeArea(
         child: FadeTransition(
@@ -269,15 +285,38 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 Positioned(
                                   left: aircraftLeft,
                                   top: (84 - size) / 2,
-                                  child: Transform.rotate(
-                                    // Icons.flight points straight up (nose north) by
-                                    // default, so +45deg only angled it up-and-right.
-                                    // +90deg (clockwise) turns the nose fully to the
-                                    // right/east so it flies level, left-to-right.
-                                    angle: 1.5707963268, // +90°
-                                    child: Icon(Icons.flight, size: size, color: kPrimary),
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: _toggleIconPause,
+                                    child: Transform.rotate(
+                                      // Icons.flight points straight up (nose north) by
+                                      // default, so +45deg only angled it up-and-right.
+                                      // +90deg (clockwise) turns the nose fully to the
+                                      // right/east so it flies level, left-to-right.
+                                      angle: 1.5707963268, // +90°
+                                      child: Icon(Icons.flight, size: size, color: kPrimary),
+                                    ),
                                   ),
                                 ),
+                                if (_paused)
+                                  Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black87,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Text(
+                                          'Paused - tap the aircraft to continue',
+                                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                               ],
                             );
                           },
@@ -301,7 +340,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
             ),
           ),
         ),
-      ),
       ),
     );
   }

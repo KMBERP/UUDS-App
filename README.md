@@ -69,6 +69,32 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 7 (auto-logout robustness, Gallery Receiving/Dispatch tabs, splash icon pause)
+1. **Auto-logout after 10 minutes, made more robust.** Rebuilt the inactivity check to compare
+   real timestamps on a recurring 15-second check (and again the instant the app returns to
+   the foreground), instead of relying on a single delayed timer - Android can quietly delay
+   or drop a lone timer like that when the screen locks or the app sits in the background,
+   which is the most likely reason it wasn't firing reliably before. If it still doesn't log
+   out after 10 real minutes of no screen touches once this build is installed, that's a sign
+   this specific update didn't make it into the APK - worth double-checking the GitHub Actions
+   build picked up this exact file (`utils/inactivity_guard.dart`).
+2. **Gallery now opens into an aircraft picker first**, then a **Receiving / Dispatch tabbed
+   view** for whichever aircraft you tap - each tab shows just that inspection type's photos,
+   grouped by location, same as before. Backup and search-by-registration stay on the aircraft
+   picker screen; select-and-share and delete stay on the per-aircraft tabbed view.
+3. **Splash screen aircraft icon** - tapping it now pauses the icon exactly where it is (and
+   holds off the automatic move to Home) until tapped again to resume. Tapping anywhere else
+   on the splash screen still does nothing, so this is now a deliberate, precise interaction
+   rather than the screen reacting unpredictably to any tap.
+
+## Update 6 (import existing photos from gallery)
+You can now add a photo you already have (taken earlier, or received via WhatsApp/email) to
+any aircraft/inspection type/location, instead of only being able to use a freshly-taken
+camera photo. On the camera screen, tap the new gallery icon in the top-right of the app bar,
+pick one or more existing photos, and they're filed exactly like a live photo would be — same
+private working copy, same public Gallery mirror folder, same database record, and they show
+up in the same "Finish" summary and thumbnail strip as anything taken with the camera.
+
 ## Update 5 (fixed: reinstalling wouldn't update the app)
 **Root cause:** every CI build was signing the release APK with a random, throwaway debug
 key that GitHub's build server generates fresh on every single run (nothing persists it

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
@@ -92,13 +93,71 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _capturing = true);
     try {
       final xfile = await _controller!.takePicture();
+      final ok = await _saveSourceFile(xfile.path);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save photo.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save photo: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  /// Lets the user pick one or more existing photos already on the phone
+  /// (e.g. taken earlier, or received via WhatsApp/email) and files them
+  /// into this aircraft/type/location exactly like a freshly-taken photo -
+  /// same private working copy, same Gallery mirror folder, same database
+  /// record, same "Finish" summary.
+  Future<void> _importFromGallery() async {
+    if (_capturing) return;
+    List<XFile> picked;
+    try {
+      picked = await ImagePicker().pickMultiImage(imageQuality: 92);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open gallery: $e')));
+      }
+      return;
+    }
+    if (picked.isEmpty) return;
+
+    setState(() => _capturing = true);
+    var imported = 0;
+    for (final xfile in picked) {
+      final ok = await _saveSourceFile(xfile.path);
+      if (ok) imported++;
+    }
+    if (mounted) {
+      setState(() => _capturing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            imported == picked.length
+                ? 'Imported $imported photo${imported == 1 ? '' : 's'} into ${widget.partLocation.name}.'
+                : 'Imported $imported of ${picked.length} photos into ${widget.partLocation.name}.',
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Copies [sourcePath] into this session's working folder, mirrors it to
+  /// the public Gallery, and records it in the database - shared by both
+  /// live camera capture and gallery import so they end up identical.
+  Future<bool> _saveSourceFile(String sourcePath) async {
+    try {
       final dir = await _targetDirectory();
       final ts = DateTime.now();
-      final stamp = DateFormat('yyyyMMdd_HHmmss').format(ts);
+      // Millisecond precision avoids filename collisions when importing
+      // several existing photos from the gallery in quick succession.
+      final stamp = DateFormat('yyyyMMdd_HHmmss_SSS').format(ts);
       final fileName =
           'IMG_${widget.aircraft.regNo}_${widget.type.label}_${widget.partLocation.name.replaceAll(' ', '')}_$stamp.jpg';
       final destPath = '${dir.path}/$fileName';
-      await File(xfile.path).copy(destPath);
+      await File(sourcePath).copy(destPath);
 
       // Mirror the photo into the public Gallery (Pictures/UUDS/Aircraft/
       // InspectionType/Location/...) via MediaStore so it shows up in the
@@ -130,27 +189,26 @@ class _CameraScreenState extends State<CameraScreen> {
       );
       final id = await DBHelper.instance.addPhoto(record);
 
-      setState(() {
-        _sessionPhotos.insert(
-          0,
-          InspectionPhoto(
-            id: id,
-            employeeName: record.employeeName,
-            aircraftReg: record.aircraftReg,
-            inspectionType: record.inspectionType,
-            partLocation: record.partLocation,
-            filePath: record.filePath,
-            timestamp: record.timestamp,
-            remarks: record.remarks,
-          ),
-        );
-        _capturing = false;
-      });
-    } catch (e) {
-      setState(() => _capturing = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save photo: $e')));
+        setState(() {
+          _sessionPhotos.insert(
+            0,
+            InspectionPhoto(
+              id: id,
+              employeeName: record.employeeName,
+              aircraftReg: record.aircraftReg,
+              inspectionType: record.inspectionType,
+              partLocation: record.partLocation,
+              filePath: record.filePath,
+              timestamp: record.timestamp,
+              remarks: record.remarks,
+            ),
+          );
+        });
       }
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -405,6 +463,13 @@ class _CameraScreenState extends State<CameraScreen> {
           '${widget.aircraft.regNo} · ${widget.type.label} · ${widget.partLocation.name}',
           style: const TextStyle(fontSize: 14),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Import existing photo(s) from gallery',
+            icon: const Icon(Icons.add_photo_alternate_outlined),
+            onPressed: _capturing ? null : _importFromGallery,
+          ),
+        ],
       ),
       body: _error != null
           ? Center(
