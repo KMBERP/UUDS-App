@@ -28,10 +28,26 @@ class AircraftGalleryScreen extends StatefulWidget {
   State<AircraftGalleryScreen> createState() => _AircraftGalleryScreenState();
 }
 
-class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> {
+class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   late List<InspectionPhoto> _photos = widget.photos;
   bool _selectMode = false;
   final Set<int> _selectedIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    // Rebuilds the custom tab header as the selection/swipe animates, so
+    // the "3D" raised/sunken look tracks the live TabBarView position.
+    _tabController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   String _idLabel(InspectionPhoto p) {
     final id = widget.idByName[p.employeeName];
@@ -152,6 +168,60 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> {
       map.putIfAbsent(p.partLocation, () => []).add(p);
     }
     return map;
+  }
+
+  Widget _tabButton({
+    required int index,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required int count,
+  }) {
+    final selected = _tabController.index == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _tabController.animateTo(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          margin: EdgeInsets.symmetric(horizontal: 6, vertical: selected ? 0 : 6),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: selected
+                ? LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [color.withOpacity(0.95), color],
+                  )
+                : null,
+            color: selected ? null : color.withOpacity(0.10),
+            boxShadow: selected
+                ? [
+                    BoxShadow(color: color.withOpacity(0.45), blurRadius: 12, offset: const Offset(0, 5)),
+                    const BoxShadow(color: Colors.white, blurRadius: 0, spreadRadius: -1, offset: Offset(0, -1)),
+                  ]
+                : [],
+            border: selected ? null : Border.all(color: color.withOpacity(0.25)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: selected ? 24 : 20, color: selected ? Colors.white : color),
+              const SizedBox(height: 4),
+              Text(
+                '$label ($count)',
+                style: TextStyle(
+                  color: selected ? Colors.white : color,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: selected ? 14 : 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildTypeTab(String inspectionType) {
@@ -305,47 +375,61 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(_selectMode ? '${_selectedIds.length} selected' : widget.aircraftReg),
-          actions: [
-            IconButton(
-              icon: Icon(_selectMode ? Icons.close_rounded : Icons.checklist_rounded),
-              tooltip: _selectMode ? 'Cancel selection' : 'Select photos to share',
-              onPressed: _toggleSelectMode,
-            ),
-          ],
-          bottom: TabBar(
-            indicatorColor: Colors.white,
-            indicatorWeight: 3,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-            tabs: [
-              Tab(text: 'Receiving (${_locationsFor('Receiving').values.fold<int>(0, (s, l) => s + l.length)})'),
-              Tab(text: 'Dispatch (${_locationsFor('Dispatch').values.fold<int>(0, (s, l) => s + l.length)})'),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_selectMode ? '${_selectedIds.length} selected' : widget.aircraftReg),
+        actions: [
+          IconButton(
+            icon: Icon(_selectMode ? Icons.close_rounded : Icons.checklist_rounded),
+            tooltip: _selectMode ? 'Cancel selection' : 'Select photos to share',
+            onPressed: _toggleSelectMode,
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildTypeTab('Receiving'),
-            _buildTypeTab('Dispatch'),
-          ],
-        ),
-        bottomNavigationBar: const AppBottomNav(current: AppTab.gallery),
-        floatingActionButton: (_selectMode && _selectedIds.isNotEmpty)
-            ? FloatingActionButton.extended(
-                onPressed: _shareSelected,
-                backgroundColor: kPrimary,
-                icon: const Icon(Icons.share, color: Colors.white),
-                label: Text('Share ${_selectedIds.length}', style: const TextStyle(color: Colors.white)),
-              )
-            : null,
+        ],
       ),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            color: Colors.white,
+            child: Row(
+              children: [
+                _tabButton(
+                  index: 0,
+                  label: 'Receiving',
+                  icon: Icons.flight_land_rounded,
+                  color: kPrimary,
+                  count: _locationsFor('Receiving').values.fold<int>(0, (s, l) => s + l.length),
+                ),
+                _tabButton(
+                  index: 1,
+                  label: 'Dispatch',
+                  icon: Icons.flight_takeoff_rounded,
+                  color: kDispatch,
+                  count: _locationsFor('Dispatch').values.fold<int>(0, (s, l) => s + l.length),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTypeTab('Receiving'),
+                _buildTypeTab('Dispatch'),
+              ],
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: const AppBottomNav(current: AppTab.gallery),
+      floatingActionButton: (_selectMode && _selectedIds.isNotEmpty)
+          ? FloatingActionButton.extended(
+              onPressed: _shareSelected,
+              backgroundColor: kPrimary,
+              icon: const Icon(Icons.share, color: Colors.white),
+              label: Text('Share ${_selectedIds.length}', style: const TextStyle(color: Colors.white)),
+            )
+          : null,
     );
   }
 }

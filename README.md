@@ -69,6 +69,13 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 9 (Gallery tabs redesigned with distinct colors + raised look)
+Replaced the flat Material tab bar with custom "3D" pill buttons matching the colors already
+used for Receiving/Dispatch elsewhere in the app (navy / burnt-orange): the selected tab is
+raised with a gradient fill, drop shadow, and bigger icon+text; the other sits flatter and
+dimmer, like an unpressed button. Each tab also gets its own icon (landing/take-off) for a
+clearer visual identity beyond just color.
+
 ## Update 8 (Gallery tab contrast + the real reason auto-logout wasn't sticking)
 1. **Receiving/Dispatch tab text was invisible.** Root cause: Material 3's default TabBar
    text color comes from the app's "primary" color - navy - which is also the AppBar's
