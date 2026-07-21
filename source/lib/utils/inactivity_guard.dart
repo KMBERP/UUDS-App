@@ -15,14 +15,20 @@ import 'session.dart';
 /// on a fresh Home screen with no inspector selected. A shared/unattended
 /// device never stays signed in under someone's name indefinitely.
 ///
-/// Implementation note: this tracks the real wall-clock time of the last
-/// touch and checks elapsed time on a short recurring tick, rather than
-/// relying on a single "fire once in exactly 10 minutes" Timer. A lone
-/// delayed Timer can be delayed or silently dropped by Android if the
-/// screen locks or the app is backgrounded for a while (battery-saving
-/// throttling); comparing real timestamps on every tick, and again the
-/// moment the app comes back to the foreground, keeps this correct even
-/// if a tick or two gets delayed.
+/// Two things make this robust against Android backgrounding/killing the
+/// app process, which a naive "single delayed Timer" approach isn't:
+/// 1. A real-timestamp comparison on a recurring 15-second tick (and again
+///    the moment the app returns to the foreground) instead of trusting a
+///    lone Timer to fire at exactly the right moment - a background app
+///    can have its timers throttled or paused by the OS for a while.
+/// 2. The last-activity timestamp is also persisted to disk
+///    (`Session.lastActivityKey`). If Android kills the whole app process
+///    while it's backgrounded (likely once it's sat unused a while), this
+///    in-memory guard dies with it - so on the next cold start, before
+///    `HomeScreen` restores whichever inspector was last saved, it checks
+///    this persisted timestamp itself and skips the restore if the app's
+///    really been untouched for longer than the timeout. See
+///    `HomeScreen._restoreLastEmployee`.
 class InactivityGuard extends StatefulWidget {
   final Widget child;
   final GlobalKey<NavigatorState> navigatorKey;
@@ -32,7 +38,7 @@ class InactivityGuard extends StatefulWidget {
     super.key,
     required this.child,
     required this.navigatorKey,
-    this.timeout = const Duration(minutes: 10),
+    this.timeout = Session.inactivityTimeout,
   });
 
   @override
@@ -50,8 +56,10 @@ class _InactivityGuardState extends State<InactivityGuard> with WidgetsBindingOb
     WidgetsBinding.instance.addObserver(this);
     // Check every 15s regardless of activity - cheap, and means the actual
     // logout never lags more than 15s behind the real 10-minute mark even
-    // if nobody happens to touch the screen to re-trigger a check.
-    _ticker = Timer.periodic(const Duration(seconds: 15), (_) => _checkIdle());
+    // if nobody happens to touch the screen to re-trigger a check. Also
+    // doubles as the point where the last-activity timestamp gets synced
+    // to disk (see class doc).
+    _ticker = Timer.periodic(const Duration(seconds: 15), (_) => _tick());
   }
 
   @override
@@ -63,10 +71,18 @@ class _InactivityGuardState extends State<InactivityGuard> with WidgetsBindingOb
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Coming back from the background/lock screen is exactly when a
-    // throttled Timer could have been silently skipped, so check
-    // immediately on resume rather than waiting for the next tick.
-    if (state == AppLifecycleState.resumed) _checkIdle();
+    if (state == AppLifecycleState.resumed) {
+      // Coming back from the background/lock screen is exactly when a
+      // throttled Timer could have been silently skipped, so check
+      // immediately on resume rather than waiting for the next tick.
+      _tick();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // About to go to the background (or be torn down) - make sure the
+      // on-disk timestamp is current in case the process gets killed
+      // outright while backgrounded, so a cold-started HomeScreen can
+      // still tell how long it's really been.
+      _persistLastActivity();
+    }
   }
 
   /// Called on every touch anywhere in the app.
@@ -74,10 +90,25 @@ class _InactivityGuardState extends State<InactivityGuard> with WidgetsBindingOb
     _lastActivity = DateTime.now();
   }
 
+  void _tick() {
+    _checkIdle();
+    if (Session.currentEmployee != null) _persistLastActivity();
+  }
+
   void _checkIdle() {
     if (_loggingOut || Session.currentEmployee == null) return;
     if (DateTime.now().difference(_lastActivity) >= widget.timeout) {
       _autoLogout();
+    }
+  }
+
+  Future<void> _persistLastActivity() async {
+    try {
+      await DBHelper.instance.setSetting(Session.lastActivityKey, _lastActivity.toIso8601String());
+    } catch (_) {
+      // Best-effort - if this write fails, the cold-start check in
+      // HomeScreen will just see a stale/missing timestamp and log out to
+      // be safe rather than silently staying signed in.
     }
   }
 

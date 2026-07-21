@@ -319,6 +319,11 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> {
           ],
           bottom: TabBar(
             indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
             tabs: [
               Tab(text: 'Receiving (${_locationsFor('Receiving').values.fold<int>(0, (s, l) => s + l.length)})'),
               Tab(text: 'Dispatch (${_locationsFor('Dispatch').values.fold<int>(0, (s, l) => s + l.length)})'),

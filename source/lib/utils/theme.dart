@@ -27,6 +27,15 @@ ThemeData buildAppTheme() {
       elevation: 0,
       centerTitle: true,
     ),
+    // Material 3's default TabBar text color comes from the color scheme's
+    // "primary" color - which is the same navy as our AppBar background, so
+    // without this override any TabBar placed in an AppBar renders
+    // invisible navy-on-navy text.
+    tabBarTheme: const TabBarThemeData(
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.white70,
+      indicatorColor: Colors.white,
+    ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: kPrimary,

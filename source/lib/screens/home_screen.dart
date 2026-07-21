@@ -54,6 +54,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _restoreLastEmployee() async {
     final savedId = await DBHelper.instance.getSetting(Session.lastEmployeeIdKey);
     if (savedId == null || savedId.isEmpty) return;
+
+    // This only runs on a cold start (Session.currentEmployee is null,
+    // meaning the app process itself is fresh - either first launch, or
+    // Android killed the previous process while it was backgrounded). A
+    // fresh process can't tell from memory alone how long it's actually
+    // been, so check the last-activity timestamp InactivityGuard persists
+    // to disk: if it's older than the timeout, this saved session should
+    // already have been logged out - just finish the job now instead of
+    // silently restoring someone's session an hour (or more) later.
+    final lastActivityIso = await DBHelper.instance.getSetting(Session.lastActivityKey);
+    if (lastActivityIso != null && lastActivityIso.isNotEmpty) {
+      final lastActivity = DateTime.tryParse(lastActivityIso);
+      if (lastActivity != null && DateTime.now().difference(lastActivity) >= Session.inactivityTimeout) {
+        await DBHelper.instance.setSetting(Session.lastEmployeeIdKey, '');
+        return;
+      }
+    }
+
     final emp = await DBHelper.instance.getEmployeeByIdInput(savedId);
     if (!mounted || emp == null) return;
     Session.login(emp);

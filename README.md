@@ -69,6 +69,24 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 8 (Gallery tab contrast + the real reason auto-logout wasn't sticking)
+1. **Receiving/Dispatch tab text was invisible.** Root cause: Material 3's default TabBar
+   text color comes from the app's "primary" color - navy - which is also the AppBar's
+   background color, so the labels were navy text on a navy background. Fixed by explicitly
+   setting the tab label colors to white (both on this screen and as an app-wide default, so
+   no future TabBar anywhere in the app can hit the same invisible-text bug).
+2. **Found the actual reason last-used ID was still there after an hour.** The 10-minute
+   auto-logout only lived in the app's memory while its process stayed alive. Very likely
+   what was actually happening: the app got closed (or Android killed it in the background,
+   which it does routinely once an app's not been used for a while) - at which point the
+   in-memory timer/guard is gone entirely, but the saved inspector ID in the database was
+   never cleared, because the code that clears it never got the chance to run. Reopening the
+   app later then restored that still-saved ID, no matter how much real time had passed.
+   Fixed by also saving a last-activity timestamp to disk, and checking it on every app cold
+   start before restoring a saved session - if more than 10 minutes have genuinely passed
+   since the last touch, it's logged out at that point instead, however long the app was
+   actually closed for.
+
 ## Update 7 (auto-logout robustness, Gallery Receiving/Dispatch tabs, splash icon pause)
 1. **Auto-logout after 10 minutes, made more robust.** Rebuilt the inactivity check to compare
    real timestamps on a recurring 15-second check (and again the instant the app returns to
