@@ -26,9 +26,14 @@ class OcrUtil {
           for (final k in keys) {
             final idx = upper.indexOf(k);
             if (idx == -1) continue;
-            final rest = lines[i].substring(idx + k.length).trim();
+            // Everything right after the label - e.g. for "PART NO: ABC123"
+            // this starts as ": ABC123". Strip the separator punctuation
+            // (colon/dot/dash) the label leaves behind, not just whitespace,
+            // or the value ends up polluted with a leading ":" that was
+            // never meant to be part of it.
+            final rest = _stripLeadingPunctuation(lines[i].substring(idx + k.length));
             if (rest.isNotEmpty) return rest;
-            if (i + 1 < lines.length) return lines[i + 1].trim();
+            if (i + 1 < lines.length) return _stripLeadingPunctuation(lines[i + 1]);
           }
         }
         return '';
@@ -58,7 +63,13 @@ class OcrUtil {
   static String _cleanLine(String line) {
     var cleaned = line.replaceAll(RegExp(r'\.{2,}'), ' ').trim();
     cleaned = cleaned.replaceAll(RegExp(r'_{2,}'), ' ').trim();
-    cleaned = cleaned.replaceAll(RegExp(r'^[:.\-\s]+'), '');
-    return cleaned.trim();
+    return _stripLeadingPunctuation(cleaned);
+  }
+
+  /// Removes leading colons/dots/dashes/whitespace - the separator a label
+  /// like "PART NO:" or "LOCATION -" leaves behind once the label itself
+  /// has been cut off, so it never ends up stuck onto the extracted value.
+  static String _stripLeadingPunctuation(String s) {
+    return s.replaceFirst(RegExp(r'^[:.\-\s]+'), '').trim();
   }
 }

@@ -69,6 +69,36 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 10 (Reports type filter, camera zoom/quality/hardware button, OCR fix, email fix)
+1. **Reports: Receiving/Dispatch are no longer ambiguous.** Added a "Type" filter (All /
+   Receiving / Dispatch) alongside the existing Date and Inspector filters. The Tags Report
+   now has an explicit Type column on every row, and Part Location Report is restructured to
+   show Receiving/Dispatch counts split out (same idea as Aircraft Summary). The emailed
+   report's table also got a Type column, and the subject line now trusts an explicit Type
+   filter instead of only guessing from the data.
+2. **Tag scanning accuracy - found a real bug.** When a label like "PART NO:" was matched,
+   the code was only stripping stray punctuation from the very start of the whole line, not
+   from the text captured right after the label - so values were coming out as ":ABC123"
+   instead of "ABC123", which likely broke a large share of scans. Fixed.
+3. **Photo quality** - bumped the camera resolution preset, and added tap-to-focus: tap
+   anywhere on the preview to force sharp focus and correct exposure right at that point,
+   instead of leaving the camera to guess. Should meaningfully help both the photos
+   themselves and how well the tag scanner can read them afterwards.
+4. **Zoom** - added pinch-to-zoom on the camera preview, plus a vertical zoom slider on
+   screen for precise control.
+5. **Hardware camera button** (e.g. the dedicated side key on the Galaxy Tab Active3) now
+   triggers a photo capture, via a native Android key-event handler forwarding it to the app.
+6. **"No email app found" despite Outlook being installed** - found the cause: Android 11+
+   hides other installed apps from this kind of check by default unless the app explicitly
+   declares which ones it needs to see. Added that declaration for mailto/email intents.
+7. **Still needing an uninstall to update** - re-verified the signing setup and added a new
+   CI step that directly compares the built APK's actual signing fingerprint against the
+   permanent keystore's fingerprint, printed in the GitHub Actions log, and now **fails the
+   build outright** if they don't match - so this can never again silently ship a
+   wrongly-signed APK. If updating in place still doesn't work after this build specifically,
+   check that this step passed in the Actions log; if it did pass, the remaining most likely
+   explanation is the one-time transition from Update 5 not having been done yet.
+
 ## Update 9 (Gallery tabs redesigned with distinct colors + raised look)
 Replaced the flat Material tab bar with custom "3D" pill buttons matching the colors already
 used for Receiving/Dispatch elsewhere in the app (navy / burnt-orange): the selected tab is

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
@@ -41,10 +42,29 @@ class _CameraScreenState extends State<CameraScreen> {
   int _galleryPublishFailures = 0;
   final List<String> _galleryPublishErrors = [];
 
+  // Zoom
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _zoom = 1.0;
+  double _zoomStartValue = 1.0;
+
+  // Tap-to-focus indicator (brief square shown where the user tapped)
+  Offset? _focusPoint;
+
+  // Hardware camera button (e.g. the dedicated side key on rugged tablets
+  // like the Galaxy Tab Active3) - see MainActivity.kt's dispatchKeyEvent,
+  // which forwards KEYCODE_CAMERA presses over this channel.
+  static const MethodChannel _hardwareKeysChannel = MethodChannel('uuds/hardware_keys');
+
   @override
   void initState() {
     super.initState();
     _initCamera();
+    _hardwareKeysChannel.setMethodCallHandler((call) async {
+      if (call.method == 'cameraButtonPressed') {
+        _captureAndSave();
+      }
+    });
   }
 
   Future<void> _initCamera() async {
@@ -63,12 +83,20 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _startController(CameraDescription desc) async {
-    final controller = CameraController(desc, ResolutionPreset.high, enableAudio: false);
+    // veryHigh gives noticeably sharper photos than the old "high" preset -
+    // matters both for readability of part tags in the photo itself and
+    // for how well the OCR tag-scan can read them.
+    final controller = CameraController(desc, ResolutionPreset.veryHigh, enableAudio: false);
     await controller.initialize();
     if (!mounted) return;
+    final minZoom = await controller.getMinZoomLevel();
+    final maxZoom = await controller.getMaxZoomLevel();
     setState(() {
       _controller = controller;
       _ready = true;
+      _minZoom = minZoom;
+      _maxZoom = maxZoom;
+      _zoom = minZoom;
     });
   }
 
@@ -78,6 +106,49 @@ class _CameraScreenState extends State<CameraScreen> {
     await _controller?.dispose();
     _cameraIndex = (_cameraIndex + 1) % _cameras.length;
     await _startController(_cameras[_cameraIndex]);
+  }
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _zoomStartValue = _zoom;
+  }
+
+  Future<void> _onScaleUpdate(ScaleUpdateDetails details) async {
+    if (_controller == null || !_ready || _maxZoom <= _minZoom) return;
+    final newZoom = (_zoomStartValue * details.scale).clamp(_minZoom, _maxZoom);
+    if (newZoom == _zoom) return;
+    _zoom = newZoom;
+    setState(() {});
+    await _controller!.setZoomLevel(_zoom);
+  }
+
+  Future<void> _setZoom(double value) async {
+    if (_controller == null || !_ready) return;
+    final clamped = value.clamp(_minZoom, _maxZoom);
+    setState(() => _zoom = clamped);
+    await _controller!.setZoomLevel(clamped);
+  }
+
+  /// Tapping the preview focuses (and sets exposure) at that exact point,
+  /// instead of leaving the camera to guess - the single biggest thing
+  /// that helps both photo sharpness and how well the OCR tag-scan can
+  /// read a part tag afterwards. Shows a brief square where you tapped so
+  /// it's clear the tap registered.
+  Future<void> _onTapToFocus(TapUpDetails details, BoxConstraints constraints) async {
+    if (_controller == null || !_ready) return;
+    final point = Offset(
+      details.localPosition.dx / constraints.maxWidth,
+      details.localPosition.dy / constraints.maxHeight,
+    );
+    setState(() => _focusPoint = details.localPosition);
+    try {
+      await _controller!.setFocusPoint(point);
+      await _controller!.setExposurePoint(point);
+    } catch (_) {
+      // Not all devices support manual focus/exposure points - safe to ignore.
+    }
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
   }
 
   Future<Directory> _targetDirectory() async {
@@ -447,6 +518,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _hardwareKeysChannel.setMethodCallHandler(null);
     _controller?.dispose();
     _remarksController.dispose();
     super.dispose();
@@ -483,7 +555,81 @@ class _CameraScreenState extends State<CameraScreen> {
               : Stack(
                   fit: StackFit.expand,
                   children: [
-                    CameraPreview(_controller!),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onScaleStart: _onScaleStart,
+                          onScaleUpdate: _onScaleUpdate,
+                          onTapUp: (details) => _onTapToFocus(details, constraints),
+                          child: CameraPreview(_controller!),
+                        );
+                      },
+                    ),
+
+                    // Brief square where the user tapped to focus
+                    if (_focusPoint != null)
+                      Positioned(
+                        left: _focusPoint!.dx - 32,
+                        top: _focusPoint!.dy - 32,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.yellow, width: 2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Vertical zoom slider (right edge) - only shown when
+                    // this lens actually has a usable zoom range. Pinching
+                    // the preview works too; this is for precise control.
+                    if (_maxZoom > _minZoom)
+                      Positioned(
+                        right: 6,
+                        top: 90,
+                        bottom: 260,
+                        width: 46,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Column(
+                            children: [
+                              Text(
+                                '${_zoom.toStringAsFixed(1)}x',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                              Expanded(
+                                child: RotatedBox(
+                                  quarterTurns: 3,
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 2,
+                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                                      activeTrackColor: Colors.white,
+                                      inactiveTrackColor: Colors.white30,
+                                      thumbColor: Colors.white,
+                                    ),
+                                    child: Slider(
+                                      min: _minZoom,
+                                      max: _maxZoom,
+                                      value: _zoom,
+                                      onChanged: _setZoom,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
 
                     // Remarks field
                     Positioned(

@@ -24,6 +24,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ReportKind _kind = ReportKind.tagsReport;
   DateTimeRange? _range;
   String? _selectedInspector; // null = All
+  String? _selectedType; // null = All, else 'Receiving' or 'Dispatch'
   bool _loading = true;
   bool _exporting = false;
   bool _emailing = false;
@@ -93,6 +94,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
     setState(() => _selectedInspector = chosen);
   }
 
+  String _typeButtonLabel() => _selectedType == null ? 'Type: All' : 'Type: $_selectedType';
+
+  Future<void> _pickType() async {
+    final chosen = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Filter by Type'),
+        children: [
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All (Receiving + Dispatch)')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'Receiving'), child: const Text('Receiving only')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'Dispatch'), child: const Text('Dispatch only')),
+        ],
+      ),
+    );
+    // showDialog resolves with null both when the user explicitly picks
+    // "All" and when they dismiss without choosing - fine here either way,
+    // both mean "no type filter".
+    setState(() => _selectedType = chosen);
+  }
+
   /// Only photos where a tag was actually scanned/entered represent a real
   /// distinct part — this is what the reports should count, not every
   /// raw photo (several photos are often taken of the same part).
@@ -100,6 +121,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return _photos.where((p) {
       if (p.tagPartNo.trim().isEmpty) return false;
       if (_selectedInspector != null && p.employeeName != _selectedInspector) return false;
+      if (_selectedType != null && p.inspectionType != _selectedType) return false;
       return true;
     }).toList();
   }
@@ -107,22 +129,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<String> get _headers {
     switch (_kind) {
       case ReportKind.tagsReport:
-        return ['S No', 'Date/Time', 'A/C', 'Location', 'Tag Part No', 'Tag Description', 'Tag Location', 'Tag Qty', 'Inspector', 'Remarks'];
+        return ['S No', 'Date/Time', 'A/C', 'Type', 'Location', 'Tag Part No', 'Tag Description', 'Tag Location', 'Tag Qty', 'Inspector', 'Remarks'];
       case ReportKind.aircraftSummary:
         return ['S No', 'Aircraft Reg No', 'Receiving Tags', 'Dispatch Tags', 'Total'];
       case ReportKind.partLocation:
-        return ['S No', 'Part Location', 'Tag Count'];
+        return ['S No', 'Part Location', 'Receiving Tags', 'Dispatch Tags', 'Total'];
     }
   }
 
   List<double> get _columnWidths {
     switch (_kind) {
       case ReportKind.tagsReport:
-        return [45, 110, 65, 100, 100, 130, 100, 50, 110, 120];
+        return [45, 110, 65, 78, 100, 100, 130, 100, 50, 110, 120];
       case ReportKind.aircraftSummary:
         return [45, 150, 120, 120, 80];
       case ReportKind.partLocation:
-        return [45, 220, 100];
+        return [45, 200, 120, 120, 80];
     }
   }
 
@@ -134,6 +156,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             .map((p) => [
                   DateFormat('dd-MM-yyyy HH:mm').format(DateTime.parse(p.timestamp)),
                   p.aircraftReg,
+                  p.inspectionType,
                   p.partLocation,
                   p.tagPartNo,
                   p.tagDescription,
@@ -162,12 +185,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ]
         ];
       case ReportKind.partLocation:
-        final Map<String, int> byLocation = {};
+        final Map<String, Map<String, int>> byLocation = {};
         for (final p in tagged) {
-          byLocation[p.partLocation] = (byLocation[p.partLocation] ?? 0) + 1;
+          byLocation.putIfAbsent(p.partLocation, () => {'Receiving': 0, 'Dispatch': 0});
+          byLocation[p.partLocation]![p.inspectionType] = (byLocation[p.partLocation]![p.inspectionType] ?? 0) + 1;
         }
         final entries = byLocation.entries.toList();
-        return [for (int i = 0; i < entries.length; i++) ['${i + 1}', entries[i].key, '${entries[i].value}']];
+        return [
+          for (int i = 0; i < entries.length; i++)
+            [
+              '${i + 1}',
+              entries[i].key,
+              '${entries[i].value['Receiving']}',
+              '${entries[i].value['Dispatch']}',
+              '${(entries[i].value['Receiving'] ?? 0) + (entries[i].value['Dispatch'] ?? 0)}',
+            ]
+        ];
     }
   }
 
@@ -245,8 +278,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }
 
       String subject;
-      if (aircraftSet.length == 1 && typeSet.length == 1) {
-        final verb = typeSet.first == 'Receiving' ? 'RECEIVED' : 'DESPATCHED';
+      // If the type filter is explicitly set, trust that over inferring
+      // from the data - a deliberate "Receiving only" filter should always
+      // say RECEIVED in the subject, even if (unusually) a stray Dispatch
+      // row slipped into range some other way.
+      final effectiveType = _selectedType ?? (typeSet.length == 1 ? typeSet.first : null);
+      if (aircraftSet.length == 1 && effectiveType != null) {
+        final verb = effectiveType == 'Receiving' ? 'RECEIVED' : 'DESPATCHED';
         subject = '$verb AIRCRAFT PARTS FOR ${aircraftSet.first}  $dateLabel';
       } else {
         subject = 'UUDS AIRCRAFT PARTS REPORT  $dateLabel';
@@ -261,13 +299,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
         'Please find below the list of aircraft parts recorded${_selectedInspector != null ? ' by $_selectedInspector' : ''} ($dateLabel).',
       );
       buffer.writeln();
-      buffer.writeln('${pad('DATE', 12)}${pad('A/C', 9)}${pad('PART NO', 14)}${pad('DESCRIPTION', 20)}${pad('LOCATION', 12)}${pad('QTY', 6)}UNIT');
-      buffer.writeln('-' * 85);
+      buffer.writeln(
+        '${pad('DATE', 12)}${pad('A/C', 9)}${pad('TYPE', 11)}${pad('PART NO', 14)}${pad('DESCRIPTION', 20)}${pad('LOCATION', 12)}${pad('QTY', 6)}UNIT',
+      );
+      buffer.writeln('-' * 96);
       for (final p in tagged) {
         final d = DateFormat('dd-MMM-yyyy').format(DateTime.parse(p.timestamp));
         final loc = p.tagLocation.isNotEmpty ? p.tagLocation : p.partLocation;
         buffer.writeln(
-          '${pad(d, 12)}${pad(p.aircraftReg, 9)}${pad(p.tagPartNo, 14)}${pad(p.tagDescription, 20)}${pad(loc, 12)}${pad(p.tagQty, 6)}EA',
+          '${pad(d, 12)}${pad(p.aircraftReg, 9)}${pad(p.inspectionType, 11)}${pad(p.tagPartNo, 14)}${pad(p.tagDescription, 20)}${pad(loc, 12)}${pad(p.tagQty, 6)}EA',
         );
       }
       buffer.writeln();
@@ -355,6 +395,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         _selectedInspector != null,
                         _pickInspector,
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _topButton(_typeButtonLabel(), _selectedType != null, _pickType),
+                      const Expanded(child: SizedBox()),
                     ],
                   ),
                 ],
