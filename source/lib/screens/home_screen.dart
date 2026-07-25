@@ -138,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final chosen = await showDialog<Employee>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Select Inspector'),
+        title: const Text('SELECT INSPECTOR'),
         children: employees
             .map((e) => SimpleDialogOption(
                   onPressed: () => Navigator.pop(ctx, e),

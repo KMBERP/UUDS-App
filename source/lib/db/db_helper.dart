@@ -16,7 +16,7 @@ const List<String> kDefaultPartLocations = [
   'LAV 5MI',
   'LAV 5MK',
   'LAV 1UB',
-  'LAV 1 MC',
+  'LAV 1MC',
   'LAV 2MM',
   'LAV 1MA',
   'LAV 3MH',
@@ -48,7 +48,7 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE employees(
@@ -177,6 +177,31 @@ class DBHelper {
           // name are left untouched (they're just historical text, not a
           // reference to this row), only the active roster entry goes.
           await db.delete('employees', where: 'UPPER(TRIM(name)) = ?', whereArgs: ['PARESH ABRAHAM']);
+        }
+        if (oldVersion < 7) {
+          // Location name correction: "LAV 1 MC" (stray space) -> "LAV 1MC".
+          // Updated both in the per-aircraft location picker list and on
+          // any photo already recorded against the old name, so it doesn't
+          // end up looking like two different locations in Gallery/Reports.
+          await db.update(
+            'part_locations',
+            {'name': 'LAV 1MC'},
+            where: 'name = ?',
+            whereArgs: ['LAV 1 MC'],
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          await db.update(
+            'photos',
+            {'partLocation': 'LAV 1MC'},
+            where: 'partLocation = ?',
+            whereArgs: ['LAV 1 MC'],
+          );
+          await db.update(
+            'photos',
+            {'tagLocation': 'LAV 1MC'},
+            where: 'tagLocation = ?',
+            whereArgs: ['LAV 1 MC'],
+          );
         }
       },
     );

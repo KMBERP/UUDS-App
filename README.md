@@ -69,6 +69,28 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 11 (scan tag from Gallery, reports cleanup, real email fix, location rename, caps text)
+1. **Scan a tag from the Gallery, not just right after taking the photo.** Every photo tile in
+   the Gallery now has a small icon (top-left) - a scanner icon if it hasn't been tagged yet,
+   a green checkmark if it has. Tap it to run the same tag-scan-and-review flow used on the
+   camera screen, so a tag missed at the time can be filled in later.
+2. **Reports screen cleaned up** - removed the separate "Tags Report" button (the tag list is
+   just the default view now); "Aircraft Summary" and "Part Location" act as toggles you can
+   tap again to return to it. Title changed to "Reports (Tags Data)".
+3. **Email bug - actually fixed this time.** The previous fix declared the wrong Android
+   intent action for the mailto check (`SENDTO` instead of `VIEW`) - verified against
+   url_launcher's real Android behaviour and corrected. Also made sending itself more robust:
+   it now tries to launch directly instead of pre-checking first, since that pre-check is
+   documented to sometimes wrongly report failure even when it would actually work.
+4. **"LAV 1 MC" renamed to "LAV 1MC"** in the location list, and on any photos already
+   recorded against the old name, so old and new photos stay grouped together consistently.
+5. **Screen titles, dialog headers, and main action buttons are now in capital letters**
+   (ADD NEW AIRCRAFT, DELETE, EXPORT EXCEL, etc.) app-wide. Deliberately left untouched:
+   anything used internally for comparisons, storage, or file paths - most importantly the
+   Receiving/Dispatch values - since forcing those to uppercase would have silently broken
+   filtering, grouping, and folder naming throughout the app. Happy to extend the caps
+   treatment to remaining smaller text (hints, subtitles) as a further pass if wanted.
+
 ## Update 10 (Reports type filter, camera zoom/quality/hardware button, OCR fix, email fix)
 1. **Reports: Receiving/Dispatch are no longer ambiguous.** Added a "Type" filter (All /
    Receiving / Dispatch) alongside the existing Date and Inspector filters. The Tags Report

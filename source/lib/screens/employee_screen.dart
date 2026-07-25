@@ -36,7 +36,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Inspector'),
+        title: const Text('ADD INSPECTOR'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -72,7 +72,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Inspector'),
+        title: const Text('EDIT INSPECTOR'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -102,7 +102,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Delete inspector?'),
+          title: const Text('DELETE INSPECTOR?'),
           content: Text('Remove "${emp.name}" from the list? Past photo records are kept.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -124,7 +124,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Inspectors')),
+      appBar: AppBar(title: const Text('MANAGE INSPECTORS')),
       bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
@@ -172,7 +172,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: PressableButton(
                 icon: Icons.person_add_alt_1_rounded,
-                label: 'Add New Inspector',
+                label: 'ADD NEW INSPECTOR',
                 height: 60,
                 onPressed: _addEmployeeDialog,
               ),

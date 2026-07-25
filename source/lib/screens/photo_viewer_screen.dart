@@ -95,7 +95,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete photo?'),
+        title: const Text('DELETE PHOTO?'),
         content: const Text('This will remove the photo record. This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),

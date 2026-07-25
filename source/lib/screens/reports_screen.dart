@@ -81,7 +81,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final chosen = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Filter by Inspector'),
+        title: const Text('FILTER BY INSPECTOR'),
         children: [
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All Inspectors')),
           ..._employees.map((e) => SimpleDialogOption(
@@ -100,7 +100,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final chosen = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Filter by Type'),
+        title: const Text('FILTER BY TYPE'),
         children: [
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All (Receiving + Dispatch)')),
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'Receiving'), child: const Text('Receiving only')),
@@ -133,7 +133,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       case ReportKind.aircraftSummary:
         return ['S No', 'Aircraft Reg No', 'Receiving Tags', 'Dispatch Tags', 'Total'];
       case ReportKind.partLocation:
-        return ['S No', 'Part Location', 'Receiving Tags', 'Dispatch Tags', 'Total'];
+        return ['S No', 'PART LOCATION', 'Receiving Tags', 'Dispatch Tags', 'Total'];
     }
   }
 
@@ -320,9 +320,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(buffer.toString())}',
       );
 
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else if (mounted) {
+      // launchUrl directly rather than pre-checking with canLaunchUrl -
+      // url_launcher's own docs note canLaunchUrl can report false even in
+      // cases where launching would actually succeed, so it's more
+      // reliable to just try and handle failure.
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No email app found on this device.')),
         );
@@ -371,7 +374,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final totalWidth = widths.fold<double>(0, (a, b) => a + b);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Reports')),
+      appBar: AppBar(title: const Text('REPORTS (TAGS DATA)')),
       bottomNavigationBar: const AppBottomNav(current: AppTab.reports),
       body: SafeArea(
         child: Column(
@@ -382,26 +385,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   Row(
                     children: [
-                      _topButton('Tags Report', _kind == ReportKind.tagsReport, () => setState(() => _kind = ReportKind.tagsReport)),
-                      _topButton('Aircraft Summary', _kind == ReportKind.aircraftSummary, () => setState(() => _kind = ReportKind.aircraftSummary)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _topButton('Part Location', _kind == ReportKind.partLocation, () => setState(() => _kind = ReportKind.partLocation)),
                       _topButton(
-                        _inspectorButtonLabel(),
-                        _selectedInspector != null,
-                        _pickInspector,
+                        'AIRCRAFT SUMMARY',
+                        _kind == ReportKind.aircraftSummary,
+                        () => setState(() => _kind =
+                            _kind == ReportKind.aircraftSummary ? ReportKind.tagsReport : ReportKind.aircraftSummary),
+                      ),
+                      _topButton(
+                        'PART LOCATION',
+                        _kind == ReportKind.partLocation,
+                        () => setState(
+                            () => _kind = _kind == ReportKind.partLocation ? ReportKind.tagsReport : ReportKind.partLocation),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
+                      _topButton(
+                        _inspectorButtonLabel(),
+                        _selectedInspector != null,
+                        _pickInspector,
+                      ),
                       _topButton(_typeButtonLabel(), _selectedType != null, _pickType),
-                      const Expanded(child: SizedBox()),
                     ],
                   ),
                 ],
@@ -502,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Expanded(
                           child: PressableButton(
                             icon: Icons.grid_on_rounded,
-                            label: 'Export Excel',
+                            label: 'EXPORT EXCEL',
                             color: kAccent,
                             height: 56,
                             fontSize: 14,
@@ -513,7 +519,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Expanded(
                           child: PressableButton(
                             icon: Icons.email_rounded,
-                            label: 'Send Email',
+                            label: 'SEND EMAIL',
                             color: kPrimary,
                             height: 56,
                             fontSize: 14,

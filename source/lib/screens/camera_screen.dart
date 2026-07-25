@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/build_info.dart';
-import '../utils/ocr_util.dart';
+import '../utils/tag_scan_dialog.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
 import 'part_location_screen.dart';
@@ -295,96 +295,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _scanTag(InspectionPhoto photo) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-    );
-    final extracted = await OcrUtil.extractTagFields(photo.filePath);
-    if (mounted) Navigator.pop(context); // close loading spinner
-    if (!mounted) return;
-
-    final partNoCtrl = TextEditingController(text: extracted['partNo'] ?? '');
-    final descCtrl = TextEditingController(text: extracted['description'] ?? '');
-    final locCtrl = TextEditingController(text: extracted['location'] ?? '');
-    final rawText = extracted['rawText'] ?? '';
-    final error = extracted['error'];
-    final qtyCtrl = TextEditingController(text: '1');
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tag Info (review & correct)'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text('Scan error: $error', style: const TextStyle(color: Colors.red, fontSize: 12)),
-                ),
-              TextField(controller: partNoCtrl, decoration: const InputDecoration(labelText: 'Part No.')),
-              const SizedBox(height: 8),
-              TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description')),
-              const SizedBox(height: 8),
-              TextField(controller: locCtrl, decoration: const InputDecoration(labelText: 'Location (per tag)')),
-              const SizedBox(height: 8),
-              TextField(
-                controller: qtyCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Qty'),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Handwritten text may not scan perfectly — please check before saving.',
-                style: TextStyle(fontSize: 11, color: Colors.black45),
-              ),
-              if (rawText.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: const Text('Show raw scanned text', style: TextStyle(fontSize: 12)),
-                  children: [
-                    Container(
-                      width: double.maxFinite,
-                      padding: const EdgeInsets.all(8),
-                      color: Colors.black12,
-                      child: Text(rawText, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
-                    ),
-                  ],
-                ),
-              ] else if (error == null)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'No text detected at all in this photo — try retaking it closer, brighter, and with the tag facing the camera right-side up.',
-                    style: TextStyle(fontSize: 11, color: Colors.deepOrange),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      await DBHelper.instance.updatePhotoTagFields(
-        photo.id!,
-        partNoCtrl.text.trim(),
-        descCtrl.text.trim(),
-        locCtrl.text.trim(),
-        qtyCtrl.text.trim(),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tag info saved')));
-      }
-    }
+    await showTagScanDialog(context, photo);
   }
 
   Future<void> _finish() async {

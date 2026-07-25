@@ -84,7 +84,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Part Location'),
+        title: const Text('ADD PART LOCATION'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -112,7 +112,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Part Location'),
+        title: const Text('EDIT PART LOCATION'),
         content: TextField(controller: controller, autofocus: true),
         actions: [
           TextButton(
@@ -131,7 +131,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Delete location?'),
+          title: const Text('DELETE LOCATION?'),
           content: Text('Remove "${loc.name}" from the list? Past photo records are kept.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -248,7 +248,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
                     )
                   : PressableButton(
                       icon: Icons.add_location_alt_rounded,
-                      label: 'Add New Location',
+                      label: 'ADD NEW LOCATION',
                       height: 60,
                       onPressed: _addLocationDialog,
                     ),

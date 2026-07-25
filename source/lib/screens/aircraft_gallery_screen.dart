@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/page_transitions.dart';
+import '../utils/tag_scan_dialog.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import 'photo_viewer_screen.dart';
@@ -110,6 +111,11 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
     await Share.shareXFiles([XFile(file.path)], text: caption);
   }
 
+  Future<void> _scanTag(InspectionPhoto p) async {
+    final saved = await showTagScanDialog(context, p);
+    if (saved) await _reload();
+  }
+
   Future<void> _shareSelected() async {
     final selectedPhotos = _photos.where((p) => _selectedIds.contains(p.id)).toList();
     final files = <XFile>[];
@@ -138,7 +144,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete photo?'),
+        title: const Text('DELETE PHOTO?'),
         content: const Text('This will remove the photo record. This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -335,6 +341,23 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
                                   padding: const EdgeInsets.all(3),
                                   decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), shape: BoxShape.circle),
                                   child: const Icon(Icons.share, color: Colors.white, size: 11),
+                                ),
+                              ),
+                            ),
+                          if (!_selectMode)
+                            Positioned(
+                              left: 2,
+                              top: 2,
+                              child: GestureDetector(
+                                onTap: () => _scanTag(p),
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), shape: BoxShape.circle),
+                                  child: Icon(
+                                    p.tagPartNo.trim().isEmpty ? Icons.document_scanner_outlined : Icons.check_circle,
+                                    color: p.tagPartNo.trim().isEmpty ? Colors.white : Colors.lightGreenAccent,
+                                    size: 11,
+                                  ),
                                 ),
                               ),
                             ),

@@ -88,7 +88,7 @@ class _AircraftScreenState extends State<AircraftScreen> {
     final letters = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add New Aircraft'),
+        title: const Text('ADD NEW AIRCRAFT'),
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -137,7 +137,7 @@ class _AircraftScreenState extends State<AircraftScreen> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Aircraft'),
+        title: const Text('EDIT AIRCRAFT'),
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -171,7 +171,7 @@ class _AircraftScreenState extends State<AircraftScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Delete aircraft?'),
+          title: const Text('DELETE AIRCRAFT?'),
           content: Text('Remove "${ac.regNo}" from the list? Past photo records are kept.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -294,7 +294,7 @@ class _AircraftScreenState extends State<AircraftScreen> {
                     )
                   : PressableButton(
                       icon: Icons.add_circle_outline_rounded,
-                      label: 'Add New Aircraft',
+                      label: 'ADD NEW AIRCRAFT',
                       height: 60,
                       onPressed: _addAircraftDialog,
                     ),

@@ -99,7 +99,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Select Backup Scope'),
+          title: const Text('SELECT BACKUP SCOPE'),
           content: SizedBox(
             width: double.maxFinite,
             child: SingleChildScrollView(
@@ -183,7 +183,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Photo Gallery'),
+        title: const Text('PHOTO GALLERY'),
         actions: [
           _backingUp
               ? const Padding(
