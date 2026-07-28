@@ -69,6 +69,15 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 12 (correction: caps was about typed data, not screen text)
+Reverted the previous update's screen-title/button caps change - that wasn't what was being
+asked for. What's actually wanted: everything **typed into the app** should come out in
+capital letters automatically. Checked every data-entry field in the app - aircraft
+registration, inspector name, part location, remarks, and all three tag-scan fields (part no,
+description, location) already force capitals live as you type from earlier work; added the
+one remaining gap (the aircraft search box on the Gallery screen). Screen titles and buttons
+are back to their normal mixed-case styling.
+
 ## Update 11 (scan tag from Gallery, reports cleanup, real email fix, location rename, caps text)
 1. **Scan a tag from the Gallery, not just right after taking the photo.** Every photo tile in
    the Gallery now has a small icon (top-left) - a scanner icon if it hasn't been tagged yet,

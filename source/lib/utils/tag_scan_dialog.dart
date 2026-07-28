@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import 'ocr_util.dart';
+import 'text_formatters.dart';
 
 /// Runs OCR on [photo], shows the "review & correct" dialog, and saves
 /// whatever the user confirms via [DBHelper.updatePhotoTagFields].
@@ -21,9 +23,9 @@ Future<bool> showTagScanDialog(BuildContext context, InspectionPhoto photo) asyn
   if (context.mounted) Navigator.pop(context); // close loading spinner
   if (!context.mounted) return false;
 
-  final partNoCtrl = TextEditingController(text: extracted['partNo'] ?? photo.tagPartNo);
-  final descCtrl = TextEditingController(text: extracted['description'] ?? photo.tagDescription);
-  final locCtrl = TextEditingController(text: extracted['location'] ?? photo.tagLocation);
+  final partNoCtrl = TextEditingController(text: (extracted['partNo'] ?? photo.tagPartNo).toUpperCase());
+  final descCtrl = TextEditingController(text: (extracted['description'] ?? photo.tagDescription).toUpperCase());
+  final locCtrl = TextEditingController(text: (extracted['location'] ?? photo.tagLocation).toUpperCase());
   final rawText = extracted['rawText'] ?? '';
   final error = extracted['error'];
   final qtyCtrl = TextEditingController(text: photo.tagQty.isNotEmpty ? photo.tagQty : '1');
@@ -42,11 +44,26 @@ Future<bool> showTagScanDialog(BuildContext context, InspectionPhoto photo) asyn
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text('Scan error: $error', style: const TextStyle(color: Colors.red, fontSize: 12)),
               ),
-            TextField(controller: partNoCtrl, decoration: const InputDecoration(labelText: 'Part No.')),
+            TextField(
+              controller: partNoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [upperCaseInputFormatter],
+              decoration: const InputDecoration(labelText: 'Part No.'),
+            ),
             const SizedBox(height: 8),
-            TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description')),
+            TextField(
+              controller: descCtrl,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [upperCaseInputFormatter],
+              decoration: const InputDecoration(labelText: 'Description'),
+            ),
             const SizedBox(height: 8),
-            TextField(controller: locCtrl, decoration: const InputDecoration(labelText: 'Location (per tag)')),
+            TextField(
+              controller: locCtrl,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [upperCaseInputFormatter],
+              decoration: const InputDecoration(labelText: 'Location (per tag)'),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: qtyCtrl,

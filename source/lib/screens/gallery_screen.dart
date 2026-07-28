@@ -5,6 +5,7 @@ import '../utils/backup_util.dart';
 import '../utils/build_info.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
+import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import 'aircraft_gallery_screen.dart';
@@ -99,7 +100,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('SELECT BACKUP SCOPE'),
+          title: const Text('Select Backup Scope'),
           content: SizedBox(
             width: double.maxFinite,
             child: SingleChildScrollView(
@@ -183,7 +184,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PHOTO GALLERY'),
+        title: const Text('Photo Gallery'),
         actions: [
           _backingUp
               ? const Padding(
@@ -204,6 +205,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: TextField(
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [upperCaseInputFormatter],
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   hintText: 'Search aircraft registration...',

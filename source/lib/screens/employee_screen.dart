@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -36,14 +37,15 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('ADD INSPECTOR'),
+        title: const Text('Add Inspector'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
               autofocus: true,
-              textCapitalization: TextCapitalization.words,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [upperCaseInputFormatter],
               decoration: const InputDecoration(labelText: 'Full name'),
             ),
             const SizedBox(height: 10),
@@ -72,11 +74,17 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('EDIT INSPECTOR'),
+        title: const Text('Edit Inspector'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, autofocus: true, decoration: const InputDecoration(labelText: 'Full name')),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [upperCaseInputFormatter],
+              decoration: const InputDecoration(labelText: 'Full name'),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: idController,
@@ -102,7 +110,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('DELETE INSPECTOR?'),
+          title: const Text('Delete inspector?'),
           content: Text('Remove "${emp.name}" from the list? Past photo records are kept.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -124,7 +132,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('MANAGE INSPECTORS')),
+      appBar: AppBar(title: const Text('Manage Inspectors')),
       bottomNavigationBar: const AppBottomNav(current: AppTab.none),
       body: SafeArea(
         child: Column(
@@ -172,7 +180,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: PressableButton(
                 icon: Icons.person_add_alt_1_rounded,
-                label: 'ADD NEW INSPECTOR',
+                label: 'Add New Inspector',
                 height: 60,
                 onPressed: _addEmployeeDialog,
               ),

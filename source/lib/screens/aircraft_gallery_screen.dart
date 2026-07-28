@@ -144,7 +144,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('DELETE PHOTO?'),
+        title: const Text('Delete photo?'),
         content: const Text('This will remove the photo record. This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),

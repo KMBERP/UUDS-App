@@ -10,6 +10,7 @@ import '../utils/build_info.dart';
 import '../utils/tag_scan_dialog.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
+import '../utils/text_formatters.dart';
 import 'part_location_screen.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -553,6 +554,8 @@ class _CameraScreenState extends State<CameraScreen> {
                         child: TextField(
                           controller: _remarksController,
                           style: const TextStyle(color: Colors.white, fontSize: 13),
+                          textCapitalization: TextCapitalization.characters,
+                          inputFormatters: [upperCaseInputFormatter],
                           decoration: const InputDecoration(
                             border: InputBorder.none,
                             hintText: 'Remarks (optional)',

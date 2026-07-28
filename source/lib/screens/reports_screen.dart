@@ -81,7 +81,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final chosen = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('FILTER BY INSPECTOR'),
+        title: const Text('Filter by Inspector'),
         children: [
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All Inspectors')),
           ..._employees.map((e) => SimpleDialogOption(
@@ -100,7 +100,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final chosen = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('FILTER BY TYPE'),
+        title: const Text('Filter by Type'),
         children: [
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, null), child: const Text('All (Receiving + Dispatch)')),
           SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'Receiving'), child: const Text('Receiving only')),
@@ -133,7 +133,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       case ReportKind.aircraftSummary:
         return ['S No', 'Aircraft Reg No', 'Receiving Tags', 'Dispatch Tags', 'Total'];
       case ReportKind.partLocation:
-        return ['S No', 'PART LOCATION', 'Receiving Tags', 'Dispatch Tags', 'Total'];
+        return ['S No', 'Part Location', 'Receiving Tags', 'Dispatch Tags', 'Total'];
     }
   }
 
@@ -374,7 +374,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final totalWidth = widths.fold<double>(0, (a, b) => a + b);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('REPORTS (TAGS DATA)')),
+      appBar: AppBar(title: const Text('Reports (Tags Data)')),
       bottomNavigationBar: const AppBottomNav(current: AppTab.reports),
       body: SafeArea(
         child: Column(
@@ -386,13 +386,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Row(
                     children: [
                       _topButton(
-                        'AIRCRAFT SUMMARY',
+                        'Aircraft Summary',
                         _kind == ReportKind.aircraftSummary,
                         () => setState(() => _kind =
                             _kind == ReportKind.aircraftSummary ? ReportKind.tagsReport : ReportKind.aircraftSummary),
                       ),
                       _topButton(
-                        'PART LOCATION',
+                        'Part Location',
                         _kind == ReportKind.partLocation,
                         () => setState(
                             () => _kind = _kind == ReportKind.partLocation ? ReportKind.tagsReport : ReportKind.partLocation),
@@ -508,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Expanded(
                           child: PressableButton(
                             icon: Icons.grid_on_rounded,
-                            label: 'EXPORT EXCEL',
+                            label: 'Export Excel',
                             color: kAccent,
                             height: 56,
                             fontSize: 14,
@@ -519,7 +519,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Expanded(
                           child: PressableButton(
                             icon: Icons.email_rounded,
-                            label: 'SEND EMAIL',
+                            label: 'Send Email',
                             color: kPrimary,
                             height: 56,
                             fontSize: 14,

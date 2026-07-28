@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/session.dart';
+import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
 import '../widgets/app_bottom_nav.dart';
@@ -84,11 +85,12 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('ADD PART LOCATION'),
+        title: const Text('Add Part Location'),
         content: TextField(
           controller: controller,
           autofocus: true,
-          textCapitalization: TextCapitalization.words,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [upperCaseInputFormatter],
           decoration: const InputDecoration(hintText: 'e.g. Seat Row 12, LH Sidewall'),
         ),
         actions: [
@@ -112,8 +114,13 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('EDIT PART LOCATION'),
-        content: TextField(controller: controller, autofocus: true),
+        title: const Text('Edit Part Location'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: [upperCaseInputFormatter],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'delete'),
@@ -131,7 +138,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('DELETE LOCATION?'),
+          title: const Text('Delete location?'),
           content: Text('Remove "${loc.name}" from the list? Past photo records are kept.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -248,7 +255,7 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
                     )
                   : PressableButton(
                       icon: Icons.add_location_alt_rounded,
-                      label: 'ADD NEW LOCATION',
+                      label: 'Add New Location',
                       height: 60,
                       onPressed: _addLocationDialog,
                     ),
