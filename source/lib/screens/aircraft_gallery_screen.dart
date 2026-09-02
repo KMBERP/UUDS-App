@@ -291,7 +291,17 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
                         fit: StackFit.expand,
                         children: [
                           File(p.filePath).existsSync()
-                              ? Image.file(File(p.filePath), fit: BoxFit.cover)
+                              // cacheWidth downsamples the *decode*, not
+                              // just the display size - this is the actual
+                              // fix for the app closing in large folders.
+                              // Without it, Flutter decodes every photo at
+                              // full camera resolution (several MB each as
+                              // a raw bitmap) just to show a small grid
+                              // square; with hundreds of photos in one
+                              // location, that exhausts memory and Android
+                              // kills the app outright. 300px is more than
+                              // enough detail for this thumbnail size.
+                              ? Image.file(File(p.filePath), fit: BoxFit.cover, cacheWidth: 300)
                               : Container(color: Colors.grey[300], child: const Icon(Icons.broken_image)),
                           Positioned(
                             left: 0,

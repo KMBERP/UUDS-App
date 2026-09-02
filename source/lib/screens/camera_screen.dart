@@ -594,7 +594,10 @@ class _CameraScreenState extends State<CameraScreen> {
                                           decoration: BoxDecoration(
                                             border: Border.all(color: Colors.white, width: 2),
                                             borderRadius: BorderRadius.circular(8),
-                                            image: DecorationImage(image: FileImage(File(photo.filePath)), fit: BoxFit.cover),
+                                            image: DecorationImage(
+                                              image: ResizeImage(FileImage(File(photo.filePath)), width: 128),
+                                              fit: BoxFit.cover,
+                                            ),
                                           ),
                                         ),
                                       ),

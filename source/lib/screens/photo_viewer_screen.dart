@@ -149,6 +149,15 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                 onPageChanged: (i) => setState(() => _index = i),
                 itemBuilder: (ctx, i) {
                   final p = widget.photos[i];
+                  // Decoding at the raw camera sensor resolution (which can
+                  // be 4000px+ wide) wastes memory well beyond what any
+                  // zoom level here can actually show - cap it to a
+                  // generous multiple of the real screen resolution
+                  // instead, so swiping through many photos in one session
+                  // can't build up the same memory pressure that was
+                  // crashing the Gallery grid.
+                  final screenPx = (MediaQuery.sizeOf(ctx).width * MediaQuery.devicePixelRatioOf(ctx)).round();
+                  final decodeWidth = (screenPx * 2).clamp(800, 2400).toInt();
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -156,7 +165,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
                         child: InteractiveViewer(
                           minScale: 0.5,
                           maxScale: 5,
-                          child: Image.file(File(p.filePath)),
+                          child: Image.file(File(p.filePath), cacheWidth: decodeWidth),
                         ),
                       ),
                       Positioned(

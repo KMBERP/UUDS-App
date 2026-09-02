@@ -69,6 +69,18 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
 
+## Update 13 (fixed: app closing in large photo folders)
+Found a real memory crash. Every photo thumbnail in the Gallery grid was being decoded at its
+full original camera resolution just to display a small square - each one can be tens of MB
+as a raw decoded image. With a handful of photos that's barely noticeable; with several
+hundred (and climbing) in one location, scrolling through them exhausts the app's memory and
+Android kills it outright - exactly the "opens fine with ~100 photos, closes with ~700"
+pattern described. Fixed by decoding thumbnails at a small target size instead of full
+resolution (using Flutter's `cacheWidth`, which controls the decode size, not just the
+display size) - applied to the Gallery grid, the camera session thumbnail strip, and capped
+the full-screen photo viewer to a sensible multiple of the actual screen resolution instead
+of the raw sensor resolution. This should hold up well past 700-1400+ photos in one folder.
+
 ## Update 12 (correction: caps was about typed data, not screen text)
 Reverted the previous update's screen-title/button caps change - that wasn't what was being
 asked for. What's actually wanted: everything **typed into the app** should come out in
