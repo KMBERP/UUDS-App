@@ -34,6 +34,17 @@ jobs:
           cp -r source/assets scaffold_tmp/assets
           cp source/pubspec.yaml scaffold_tmp/pubspec.yaml
 
+      - name: Copy release signing keystore into scaffold
+        run: |
+          # Without this, `flutter build apk --release` falls back to signing
+          # with a random debug key that's regenerated on every CI run - so
+          # every build looks like a "different app" to Android, and it
+          # refuses to install over the existing one (needs uninstall first).
+          # Using the same committed keystore every time fixes that: Android
+          # sees the same signing certificate and updates in place.
+          cp signing/uuds-release.keystore.jks scaffold_tmp/android/app/uuds-release.keystore.jks
+          cp signing/key.properties scaffold_tmp/android/key.properties
+
       - name: Stamp real build ID into the app (for on-device verification)
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
@@ -53,6 +64,26 @@ jobs:
           MANIFEST=scaffold_tmp/android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>\n    <application#' "$MANIFEST"
           sed -i 's/android:label="[^"]*"/android:label="UUDS Parts Inspection"/' "$MANIFEST"
+
+          # Android 11+ (targetSdk 30+) hides other apps from this app's view
+          # by default ("package visibility") - including from
+          # canLaunchUrl()/PackageManager queries. Without declaring which
+          # intents this app needs to see, canLaunchUrl(mailto:...) reports
+          # false even when a mail app (e.g. Outlook) genuinely is
+          # installed, which is exactly the "No email app found" error.
+          # IMPORTANT: url_launcher's canLaunchUrl queries mailto: links
+          # with ACTION_VIEW (not ACTION_SENDTO) on Android - that's the
+          # one that actually has to be declared, confirmed against the
+          # plugin's own docs. SENDTO is included too since share_plus/other
+          # flows may use it, but VIEW is the one this bug needed.
+          # <queries> must be a sibling of <application>, inside <manifest>.
+          sed -i 's#</manifest>#    <queries>\n        <intent>\n            <action android:name="android.intent.action.VIEW" />\n            <data android:scheme="mailto" />\n        </intent>\n        <intent>\n            <action android:name="android.intent.action.SENDTO" />\n            <data android:scheme="mailto" />\n        </intent>\n        <intent>\n            <action android:name="android.intent.action.SEND" />\n            <data android:mimeType="*/*" />\n        </intent>\n    </queries>\n</manifest>#' "$MANIFEST"
+
+          if ! grep -q 'android.intent.action.VIEW' "$MANIFEST"; then
+            echo "::error::<queries> block for mailto (ACTION_VIEW) was not inserted into AndroidManifest.xml - email launching would silently fail"
+            exit 1
+          fi
+          echo "OK: mailto <queries> declaration (ACTION_VIEW) confirmed present"
 
       - name: Add native MediaStore publish channel (MainActivity)
         run: |
@@ -75,6 +106,7 @@ jobs:
           import android.os.Build
           import android.os.Environment
           import android.provider.MediaStore
+          import android.view.KeyEvent
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
@@ -89,9 +121,16 @@ jobs:
            * below. Neither path needs the broad "All files access" permission.
            * Returns a {success, error} map so the Dart side can show the real
            * reason if publishing ever fails, instead of a bare boolean.
+           *
+           * Also forwards the hardware camera button (KEYCODE_CAMERA - the
+           * dedicated side key some rugged tablets like the Galaxy Tab
+           * Active3 have) to Dart over a separate channel, since Flutter
+           * doesn't surface that key on its own.
            */
           class MainActivity : FlutterActivity() {
               private val CHANNEL = "uuds/photo_store"
+              private val HARDWARE_KEYS_CHANNEL = "uuds/hardware_keys"
+              private var hardwareKeysMethodChannel: MethodChannel? = null
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -111,6 +150,17 @@ jobs:
                           result.notImplemented()
                       }
                   }
+                  hardwareKeysMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HARDWARE_KEYS_CHANNEL)
+              }
+
+              override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                  if (event.keyCode == KeyEvent.KEYCODE_CAMERA && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                      hardwareKeysMethodChannel?.invokeMethod("cameraButtonPressed", null)
+                      // Consume it so Android doesn't also try to launch a
+                      // separate system camera app on top of ours.
+                      return true
+                  }
+                  return super.dispatchKeyEvent(event)
               }
 
               private fun publishToGallery(
@@ -177,6 +227,10 @@ jobs:
             echo "::error::MainActivity.kt was written but does not contain the uuds/photo_store channel - refusing to build a broken APK"
             exit 1
           fi
+          if ! grep -q 'uuds/hardware_keys' "$MAIN_ACT_DIR/MainActivity.kt"; then
+            echo "::error::MainActivity.kt was written but does not contain the uuds/hardware_keys channel - the hardware camera button would silently not work"
+            exit 1
+          fi
           if ! grep -q 'package com.uudsaero.uuds_parts_app' "$MAIN_ACT_DIR/MainActivity.kt"; then
             echo "::error::MainActivity.kt package does not match com.uudsaero.uuds_parts_app - the manifest's activity won't resolve to this class"
             exit 1
@@ -195,6 +249,100 @@ jobs:
               sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/' "$GRADLE_FILE"
             fi
           done
+
+      - name: Configure release signing (use our permanent keystore, not the throwaway debug one)
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          kts = "scaffold_tmp/android/app/build.gradle.kts"
+          groovy = "scaffold_tmp/android/app/build.gradle"
+
+          def patch_kts(path):
+              with open(path) as f:
+                  text = f.read()
+
+              text = "import java.util.Properties\nimport java.io.FileInputStream\n\n" + text
+
+              loader = (
+                  'val keystoreProperties = Properties()\n'
+                  'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+                  'if (keystorePropertiesFile.exists()) {\n'
+                  '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+                  '}\n\n'
+              )
+              text = text.replace("android {", loader + "android {", 1)
+
+              signing_block = (
+                  'android {\n'
+                  '    signingConfigs {\n'
+                  '        create("release") {\n'
+                  '            keyAlias = keystoreProperties["keyAlias"] as String?\n'
+                  '            keyPassword = keystoreProperties["keyPassword"] as String?\n'
+                  '            storeFile = keystoreProperties["storeFile"]?.let { file(it) }\n'
+                  '            storePassword = keystoreProperties["storePassword"] as String?\n'
+                  '        }\n'
+                  '    }\n'
+              )
+              text = text.replace("android {", signing_block, 1)
+
+              text = text.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("release")')
+
+              with open(path, "w") as f:
+                  f.write(text)
+              print(f"Patched {path} for release signing (Kotlin DSL)")
+
+          def patch_groovy(path):
+              with open(path) as f:
+                  text = f.read()
+
+              loader = (
+                  "def keystoreProperties = new Properties()\n"
+                  "def keystorePropertiesFile = rootProject.file('key.properties')\n"
+                  "if (keystorePropertiesFile.exists()) {\n"
+                  "    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n"
+                  "}\n\n"
+              )
+              text = text.replace("android {", loader + "android {", 1)
+
+              signing_block = (
+                  "android {\n"
+                  "    signingConfigs {\n"
+                  "        release {\n"
+                  "            keyAlias keystoreProperties['keyAlias']\n"
+                  "            keyPassword keystoreProperties['keyPassword']\n"
+                  "            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null\n"
+                  "            storePassword keystoreProperties['storePassword']\n"
+                  "        }\n"
+                  "    }\n"
+              )
+              text = text.replace("android {", signing_block, 1)
+
+              text = re.sub(r'signingConfigs\.getByName\("debug"\)', 'signingConfigs.getByName("release")', text)
+              text = re.sub(r'signingConfigs\.debug\b', 'signingConfigs.release', text)
+
+              with open(path, "w") as f:
+                  f.write(text)
+              print(f"Patched {path} for release signing (Groovy)")
+
+          import os
+          if os.path.exists(kts):
+              patch_kts(kts)
+          elif os.path.exists(groovy):
+              patch_groovy(groovy)
+          else:
+              raise SystemExit("::error::No app/build.gradle(.kts) found - cannot configure release signing")
+          PYEOF
+
+      - name: Verify release signing config was applied
+        run: |
+          GRADLE_FILE=scaffold_tmp/android/app/build.gradle.kts
+          [ -f "$GRADLE_FILE" ] || GRADLE_FILE=scaffold_tmp/android/app/build.gradle
+          if ! grep -q 'signingConfigs.getByName("release")\|signingConfigs.release' "$GRADLE_FILE"; then
+            echo "::error::Release signing config was not wired up - refusing to build an APK that would sign with a throwaway debug key"
+            exit 1
+          fi
+          echo "OK: release build type is wired to the permanent keystore"
 
       - name: Get packages
         working-directory: scaffold_tmp
@@ -232,6 +380,22 @@ jobs:
       - name: Build release APK
         working-directory: scaffold_tmp
         run: flutter build apk --release
+
+      - name: Verify the built APK is actually signed with our permanent keystore
+        run: |
+          set -e
+          STORE_PASS=$(grep '^storePassword=' signing/key.properties | cut -d= -f2-)
+          echo "--- Our keystore's own certificate fingerprint ---"
+          KEYSTORE_FP=$(keytool -list -v -keystore signing/uuds-release.keystore.jks -storepass "$STORE_PASS" -alias uuds_upload | grep 'SHA256:' | head -n1)
+          echo "$KEYSTORE_FP"
+          echo "--- The actual built APK's signing certificate fingerprint ---"
+          APK_FP=$(keytool -printcert -jarfile scaffold_tmp/build/app/outputs/flutter-apk/app-release.apk | grep 'SHA256:' | head -n1)
+          echo "$APK_FP"
+          if [ "$KEYSTORE_FP" != "$APK_FP" ]; then
+            echo "::error::The built APK's signature does NOT match signing/uuds-release.keystore.jks - it would fail to update over a build that used the permanent key. Refusing to publish this APK."
+            exit 1
+          fi
+          echo "OK: confirmed - this APK is signed with the permanent keystore and will update cleanly over any other build signed with it."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
