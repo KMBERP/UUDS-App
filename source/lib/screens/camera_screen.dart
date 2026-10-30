@@ -43,27 +43,38 @@ class _CameraScreenState extends State<CameraScreen> {
   int _galleryPublishFailures = 0;
   final List<String> _galleryPublishErrors = [];
 
+  // Flashlight / Torch
+  FlashMode _flashMode = FlashMode.off;
+
   // Zoom
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
   double _zoom = 1.0;
   double _zoomStartValue = 1.0;
 
-  // Tap-to-focus indicator (brief square shown where the user tapped)
+  // Tag alignment frame mode
+  bool _tagGuideVisible = false;
+
+  // Tap-to-focus indicator (technical reticle shown where user tapped)
   Offset? _focusPoint;
 
-  // Hardware camera button (e.g. the dedicated side key on rugged tablets
-  // like the Galaxy Tab Active3) - see MainActivity.kt's dispatchKeyEvent,
-  // which forwards KEYCODE_CAMERA presses over this channel.
+  // Hardware camera button & side key channel
   static const MethodChannel _hardwareKeysChannel = MethodChannel('uuds/hardware_keys');
 
   @override
   void initState() {
     super.initState();
     _initCamera();
+    _initHardwareKeys();
+  }
+
+  void _initHardwareKeys() {
+    _hardwareKeysChannel.invokeMethod('setCameraScreenActive', {'active': true});
     _hardwareKeysChannel.setMethodCallHandler((call) async {
       if (call.method == 'cameraButtonPressed') {
-        _captureAndSave();
+        if (!_capturing && mounted) {
+          _captureAndSave(isTag: _tagGuideVisible);
+        }
       }
     });
   }
@@ -84,21 +95,40 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _startController(CameraDescription desc) async {
-    // veryHigh gives noticeably sharper photos than the old "high" preset -
-    // matters both for readability of part tags in the photo itself and
-    // for how well the OCR tag-scan can read them.
     final controller = CameraController(desc, ResolutionPreset.veryHigh, enableAudio: false);
     await controller.initialize();
     if (!mounted) return;
     final minZoom = await controller.getMinZoomLevel();
     final maxZoom = await controller.getMaxZoomLevel();
+
+    // Enable continuous auto-focus and auto-exposure
+    try {
+      await controller.setFocusMode(FocusMode.auto);
+      await controller.setExposureMode(ExposureMode.auto);
+    } catch (_) {}
+
     setState(() {
       _controller = controller;
       _ready = true;
       _minZoom = minZoom;
       _maxZoom = maxZoom;
       _zoom = minZoom;
+      _flashMode = FlashMode.off;
     });
+  }
+
+  Future<void> _toggleTorch() async {
+    if (_controller == null || !_ready) return;
+    final nextMode = _flashMode == FlashMode.torch ? FlashMode.off : FlashMode.torch;
+    try {
+      await _controller!.setFlashMode(nextMode);
+      setState(() => _flashMode = nextMode);
+      HapticFeedback.lightImpact();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Torch not supported: $e')));
+      }
+    }
   }
 
   Future<void> _flipCamera() async {
@@ -129,11 +159,13 @@ class _CameraScreenState extends State<CameraScreen> {
     await _controller!.setZoomLevel(clamped);
   }
 
-  /// Tapping the preview focuses (and sets exposure) at that exact point,
-  /// instead of leaving the camera to guess - the single biggest thing
-  /// that helps both photo sharpness and how well the OCR tag-scan can
-  /// read a part tag afterwards. Shows a brief square where you tapped so
-  /// it's clear the tap registered.
+  void _stepZoom(double delta) {
+    final target = (_zoom + delta).clamp(_minZoom, _maxZoom);
+    _setZoom(target);
+    HapticFeedback.selectionClick();
+  }
+
+  /// Tapping the preview locks focus and exposure at that exact point
   Future<void> _onTapToFocus(TapUpDetails details, BoxConstraints constraints) async {
     if (_controller == null || !_ready) return;
     final point = Offset(
@@ -144,30 +176,47 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       await _controller!.setFocusPoint(point);
       await _controller!.setExposurePoint(point);
-    } catch (_) {
-      // Not all devices support manual focus/exposure points - safe to ignore.
-    }
-    Future.delayed(const Duration(milliseconds: 700), () {
+      await _controller!.setFocusMode(FocusMode.auto);
+      await _controller!.setExposureMode(ExposureMode.auto);
+      HapticFeedback.selectionClick();
+    } catch (_) {}
+    Future.delayed(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _focusPoint = null);
     });
   }
 
-  Future<Directory> _targetDirectory() async {
+  Future<Directory> _targetDirectory({bool isTag = false}) async {
     return StoragePaths.photoDirectory(
       aircraftReg: widget.aircraft.regNo,
       inspectionTypeLabel: widget.type.label,
       location: widget.partLocation.name,
+      isTag: isTag,
     );
   }
 
-  Future<void> _captureAndSave() async {
+  Future<void> _captureAndSave({bool isTag = false}) async {
     if (_controller == null || !_controller!.value.isInitialized || _capturing) return;
     setState(() => _capturing = true);
+    HapticFeedback.mediumImpact();
     try {
+      // Briefly lock focus to guarantee crisp exposure without shutter blur
+      try {
+        await _controller!.setFocusMode(FocusMode.locked);
+      } catch (_) {}
+
       final xfile = await _controller!.takePicture();
-      final ok = await _saveSourceFile(xfile.path);
-      if (!ok && mounted) {
+
+      // Restore auto focus
+      try {
+        await _controller!.setFocusMode(FocusMode.auto);
+      } catch (_) {}
+
+      final savedPhoto = await _saveSourceFile(xfile.path, isTag: isTag);
+      if (savedPhoto == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save photo.')));
+      } else if (savedPhoto != null && isTag) {
+        // Automatically prompt tag OCR scanning for tag photos
+        await _scanTag(savedPhoto);
       }
     } catch (e) {
       if (mounted) {
@@ -178,12 +227,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// Lets the user pick one or more existing photos already on the phone
-  /// (e.g. taken earlier, or received via WhatsApp/email) and files them
-  /// into this aircraft/type/location exactly like a freshly-taken photo -
-  /// same private working copy, same Gallery mirror folder, same database
-  /// record, same "Finish" summary.
-  Future<void> _importFromGallery() async {
+  Future<void> _importFromGallery({bool isTag = false}) async {
     if (_capturing) return;
     List<XFile> picked;
     try {
@@ -198,50 +242,53 @@ class _CameraScreenState extends State<CameraScreen> {
 
     setState(() => _capturing = true);
     var imported = 0;
+    InspectionPhoto? lastImported;
     for (final xfile in picked) {
-      final ok = await _saveSourceFile(xfile.path);
-      if (ok) imported++;
+      final photo = await _saveSourceFile(xfile.path, isTag: isTag);
+      if (photo != null) {
+        imported++;
+        lastImported = photo;
+      }
     }
     if (mounted) {
       setState(() => _capturing = false);
+      final destFolder = isTag ? 'Part_Tags' : widget.partLocation.name;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             imported == picked.length
-                ? 'Imported $imported photo${imported == 1 ? '' : 's'} into ${widget.partLocation.name}.'
-                : 'Imported $imported of ${picked.length} photos into ${widget.partLocation.name}.',
+                ? 'Imported $imported photo${imported == 1 ? '' : 's'} into $destFolder.'
+                : 'Imported $imported of ${picked.length} photos into $destFolder.',
           ),
         ),
       );
+      if (isTag && lastImported != null && imported == 1) {
+        await _scanTag(lastImported);
+      }
     }
   }
 
-  /// Copies [sourcePath] into this session's working folder, mirrors it to
-  /// the public Gallery, and records it in the database - shared by both
-  /// live camera capture and gallery import so they end up identical.
-  Future<bool> _saveSourceFile(String sourcePath) async {
+  /// Copies source into working directory and mirrors to public MediaStore.
+  /// If [isTag] is true, saves into dedicated Part_Tags directory.
+  Future<InspectionPhoto?> _saveSourceFile(String sourcePath, {bool isTag = false}) async {
     try {
-      final dir = await _targetDirectory();
+      final dir = await _targetDirectory(isTag: isTag);
       final ts = DateTime.now();
-      // Millisecond precision avoids filename collisions when importing
-      // several existing photos from the gallery in quick succession.
       final stamp = DateFormat('yyyyMMdd_HHmmss_SSS').format(ts);
+      final prefix = isTag ? 'TAG' : 'IMG';
       final fileName =
-          'IMG_${widget.aircraft.regNo}_${widget.type.label}_${widget.partLocation.name.replaceAll(' ', '')}_$stamp.jpg';
+          '${prefix}_${widget.aircraft.regNo}_${widget.type.label}_${widget.partLocation.name.replaceAll(' ', '')}_$stamp.jpg';
       final destPath = '${dir.path}/$fileName';
       await File(sourcePath).copy(destPath);
 
-      // Mirror the photo into the public Gallery (Pictures/UUDS/Aircraft/
-      // InspectionType/Location/...) via MediaStore so it shows up in the
-      // Gallery/Photos app and file manager right away, in the correct
-      // sub-folder. This is independent of the private working copy above,
-      // which is what the app itself always reads back from.
+      // Mirror into public Gallery
       final published = await StoragePaths.publishToGallery(
         sourcePath: destPath,
         aircraftReg: widget.aircraft.regNo,
         inspectionTypeLabel: widget.type.label,
         location: widget.partLocation.name,
         fileName: fileName,
+        isTag: isTag,
       );
       if (!published.success) {
         _galleryPublishFailures++;
@@ -258,29 +305,30 @@ class _CameraScreenState extends State<CameraScreen> {
         filePath: destPath,
         timestamp: ts.toIso8601String(),
         remarks: _remarksController.text.trim(),
+        isTag: isTag ? 1 : 0,
       );
       final id = await DBHelper.instance.addPhoto(record);
 
+      final newPhoto = InspectionPhoto(
+        id: id,
+        employeeName: record.employeeName,
+        aircraftReg: record.aircraftReg,
+        inspectionType: record.inspectionType,
+        partLocation: record.partLocation,
+        filePath: record.filePath,
+        timestamp: record.timestamp,
+        remarks: record.remarks,
+        isTag: record.isTag,
+      );
+
       if (mounted) {
         setState(() {
-          _sessionPhotos.insert(
-            0,
-            InspectionPhoto(
-              id: id,
-              employeeName: record.employeeName,
-              aircraftReg: record.aircraftReg,
-              inspectionType: record.inspectionType,
-              partLocation: record.partLocation,
-              filePath: record.filePath,
-              timestamp: record.timestamp,
-              remarks: record.remarks,
-            ),
-          );
+          _sessionPhotos.insert(0, newPhoto);
         });
       }
-      return true;
+      return newPhoto;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
@@ -296,15 +344,21 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _scanTag(InspectionPhoto photo) async {
-    await showTagScanDialog(context, photo);
+    final updated = await showTagScanDialog(context, photo);
+    if (updated) {
+      final refreshed = await DBHelper.instance.getPhotos();
+      final current = refreshed.firstWhere((p) => p.id == photo.id, orElse: () => photo);
+      setState(() {
+        final idx = _sessionPhotos.indexWhere((p) => p.id == photo.id);
+        if (idx != -1) _sessionPhotos[idx] = current;
+      });
+    }
   }
 
   Future<void> _finish() async {
-    final dir = await _targetDirectory();
     final photoCount = _sessionPhotos.length;
-    final publishedCount = photoCount - _galleryPublishFailures;
-    final galleryFolderPath =
-        'Pictures/UUDS/${widget.aircraft.regNo}/${widget.type.label}/${widget.partLocation.name}';
+    final tagCount = _sessionPhotos.where((p) => p.isTag == 1).length;
+    final partCount = photoCount - tagCount;
 
     if (!mounted) return;
 
@@ -327,7 +381,7 @@ class _CameraScreenState extends State<CameraScreen> {
               Text(
                 photoCount == 0
                     ? 'No photos were taken this session.'
-                    : '$photoCount photo${photoCount == 1 ? '' : 's'} saved successfully.',
+                    : '$photoCount photo${photoCount == 1 ? '' : 's'} saved successfully ($partCount parts, $tagCount tags).',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
               const SizedBox(height: 12),
@@ -337,7 +391,7 @@ class _CameraScreenState extends State<CameraScreen> {
               _infoRow('Location:', widget.partLocation.name),
               if (photoCount > 0) ...[
                 const SizedBox(height: 12),
-                const Text('Saved on device at:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const Text('Public Folders:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 const SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -347,46 +401,11 @@ class _CameraScreenState extends State<CameraScreen> {
                     border: Border.all(color: Colors.black12),
                   ),
                   child: Text(
-                    dir.path,
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    'Parts: Pictures/UUDS/Photos/${widget.aircraft.regNo}/${widget.type.label}/${widget.partLocation.name}\n'
+                    'Tags: Pictures/UUDS/Part_Tags/${widget.aircraft.regNo}/${widget.type.label}/${widget.partLocation.name}',
+                    style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
                   ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      publishedCount == photoCount ? Icons.photo_library_rounded : Icons.warning_amber_rounded,
-                      size: 16,
-                      color: publishedCount == photoCount ? Colors.green : Colors.orange,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        publishedCount == photoCount
-                            ? 'Also copied to Gallery/Photos:\n$galleryFolderPath'
-                            : '$publishedCount of $photoCount copied to Gallery/Photos so far:\n$galleryFolderPath',
-                        style: const TextStyle(fontSize: 11.5, color: Colors.black54, height: 1.3),
-                      ),
-                    ),
-                  ],
-                ),
-                if (publishedCount != photoCount && _galleryPublishErrors.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                    ),
-                    child: Text(
-                      'Reason: ${_galleryPublishErrors.join('; ')}\nBuild: $kBuildId',
-                      style: const TextStyle(fontSize: 11, color: Colors.deepOrange),
-                    ),
-                  ),
-                ],
               ],
             ],
           ),
@@ -430,6 +449,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _hardwareKeysChannel.invokeMethod('setCameraScreenActive', {'active': false});
     _hardwareKeysChannel.setMethodCallHandler(null);
     _controller?.dispose();
     _remarksController.dispose();
@@ -445,13 +465,32 @@ class _CameraScreenState extends State<CameraScreen> {
         foregroundColor: Colors.white,
         title: Text(
           '${widget.aircraft.regNo} · ${widget.type.label} · ${widget.partLocation.name}',
-          style: const TextStyle(fontSize: 14),
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
         ),
         actions: [
           IconButton(
-            tooltip: 'Import existing photo(s) from gallery',
+            tooltip: _flashMode == FlashMode.torch ? 'Torch ON' : 'Torch OFF',
+            icon: Icon(
+              _flashMode == FlashMode.torch ? Icons.flash_on : Icons.flash_off,
+              color: _flashMode == FlashMode.torch ? Colors.amber : Colors.white,
+            ),
+            onPressed: _toggleTorch,
+          ),
+          IconButton(
+            tooltip: _tagGuideVisible ? 'Hide Tag Frame' : 'Show Tag Frame',
+            icon: Icon(
+              Icons.crop_free,
+              color: _tagGuideVisible ? Colors.amber : Colors.white70,
+            ),
+            onPressed: () {
+              setState(() => _tagGuideVisible = !_tagGuideVisible);
+              HapticFeedback.selectionClick();
+            },
+          ),
+          IconButton(
+            tooltip: 'Import from gallery',
             icon: const Icon(Icons.add_photo_alternate_outlined),
-            onPressed: _capturing ? null : _importFromGallery,
+            onPressed: _capturing ? null : () => _importFromGallery(isTag: _tagGuideVisible),
           ),
         ],
       ),
@@ -479,66 +518,54 @@ class _CameraScreenState extends State<CameraScreen> {
                       },
                     ),
 
-                    // Brief square where the user tapped to focus
+                    // Technical corner-bracket focus reticle
                     if (_focusPoint != null)
                       Positioned(
-                        left: _focusPoint!.dx - 32,
-                        top: _focusPoint!.dy - 32,
+                        left: _focusPoint!.dx - 36,
+                        top: _focusPoint!.dy - 36,
                         child: IgnorePointer(
                           child: Container(
-                            width: 64,
-                            height: 64,
+                            width: 72,
+                            height: 72,
                             decoration: BoxDecoration(
-                              border: Border.all(color: Colors.yellow, width: 2),
-                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.amberAccent, width: 2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.add, color: Colors.amberAccent, size: 20),
                             ),
                           ),
                         ),
                       ),
 
-                    // Vertical zoom slider (right edge) - only shown when
-                    // this lens actually has a usable zoom range. Pinching
-                    // the preview works too; this is for precise control.
-                    if (_maxZoom > _minZoom)
-                      Positioned(
-                        right: 6,
-                        top: 90,
-                        bottom: 260,
-                        width: 46,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black38,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(
-                            children: [
-                              Text(
-                                '${_zoom.toStringAsFixed(1)}x',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                              ),
-                              Expanded(
-                                child: RotatedBox(
-                                  quarterTurns: 3,
-                                  child: SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                                      activeTrackColor: Colors.white,
-                                      inactiveTrackColor: Colors.white30,
-                                      thumbColor: Colors.white,
-                                    ),
-                                    child: Slider(
-                                      min: _minZoom,
-                                      max: _maxZoom,
-                                      value: _zoom,
-                                      onChanged: _setZoom,
-                                    ),
+                    // Tag Framing Guide Overlay (when tag scanning mode is active)
+                    if (_tagGuideVisible)
+                      Center(
+                        child: IgnorePointer(
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.85,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.amberAccent, width: 2.5),
+                              borderRadius: BorderRadius.circular(12),
+                              color: Colors.amber.withOpacity(0.08),
+                            ),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.qr_code_scanner, color: Colors.amberAccent, size: 36),
+                                SizedBox(height: 6),
+                                Text(
+                                  'ALIGN PART TAG INSIDE THIS FRAME',
+                                  style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -550,7 +577,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       right: 12,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)),
+                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
                         child: TextField(
                           controller: _remarksController,
                           style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -566,9 +593,19 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
 
-                    // Thumbnail strip (above the button row), scrolls right-to-left
+                    // Discrete Zoom Buttons (-1, -0.5, 1.0x, +0.5, +1)
                     Positioned(
-                      bottom: 118,
+                      bottom: 200,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: _buildZoomBar(),
+                      ),
+                    ),
+
+                    // Thumbnail strip (above the button row)
+                    Positioned(
+                      bottom: 114,
                       left: 0,
                       right: 0,
                       height: 72,
@@ -581,18 +618,22 @@ class _CameraScreenState extends State<CameraScreen> {
                               itemCount: _sessionPhotos.length,
                               itemBuilder: (ctx, i) {
                                 final photo = _sessionPhotos[i];
+                                final isTag = photo.isTag == 1;
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 4),
                                   child: Stack(
                                     clipBehavior: Clip.none,
                                     children: [
                                       GestureDetector(
-                                        onLongPress: () => _scanTag(photo),
+                                        onTap: () => _scanTag(photo),
                                         child: Container(
                                           width: 64,
                                           height: 64,
                                           decoration: BoxDecoration(
-                                            border: Border.all(color: Colors.white, width: 2),
+                                            border: Border.all(
+                                              color: isTag ? Colors.amberAccent : Colors.white,
+                                              width: isTag ? 2.5 : 1.5,
+                                            ),
                                             borderRadius: BorderRadius.circular(8),
                                             image: DecorationImage(
                                               image: ResizeImage(FileImage(File(photo.filePath)), width: 128),
@@ -601,6 +642,27 @@ class _CameraScreenState extends State<CameraScreen> {
                                           ),
                                         ),
                                       ),
+                                      // Tag indicator badge
+                                      if (isTag)
+                                        Positioned(
+                                          bottom: 2,
+                                          left: 2,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amberAccent,
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Text(
+                                              'TAG',
+                                              style: TextStyle(
+                                                color: Colors.black,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       Positioned(
                                         top: -6,
                                         right: -6,
@@ -620,90 +682,175 @@ class _CameraScreenState extends State<CameraScreen> {
                               },
                             ),
                     ),
-                    if (_sessionPhotos.isNotEmpty)
-                      Positioned(
-                        bottom: 192,
-                        left: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(16)),
-                          child: Text(
-                            '${_sessionPhotos.length} photo(s) · long-press one to scan tag',
-                            style: const TextStyle(color: Colors.white70, fontSize: 11),
-                          ),
-                        ),
-                      ),
 
-                    // Camera flip button (left side)
+                    // Controls row at bottom
                     Positioned(
-                      bottom: 36,
-                      left: 24,
-                      child: GestureDetector(
-                        onTap: _flipCamera,
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Colors.black45,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white54, width: 2),
-                          ),
-                          child: const Icon(Icons.flip_camera_android_rounded, color: Colors.white, size: 28),
-                        ),
-                      ),
-                    ),
-
-                    // Capture button (center)
-                    Positioned(
-                      bottom: 26,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: _captureAndSave,
-                          child: Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              border: Border.all(color: _capturing ? Colors.grey : Colors.white70, width: 4),
-                              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                      bottom: 22,
+                      left: 16,
+                      right: 16,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Flip Camera
+                          GestureDetector(
+                            onTap: _flipCamera,
+                            child: Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white54, width: 2),
+                              ),
+                              child: const Icon(Icons.flip_camera_android_rounded, color: Colors.white, size: 24),
                             ),
-                            child: _capturing
-                                ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(strokeWidth: 3))
-                                : const Icon(Icons.camera_alt, size: 34, color: Colors.black87),
                           ),
-                        ),
-                      ),
-                    ),
 
-                    // Finish button (bottom-right of capture button)
-                    Positioned(
-                      bottom: 36,
-                      right: 24,
-                      child: GestureDetector(
-                        onTap: _finish,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 3))],
-                          ),
-                          child: const Row(
+                          // DUAL CAPTURE BUTTONS: PART PHOTO & TAG PHOTO
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle, color: Colors.white, size: 22),
-                              SizedBox(width: 6),
-                              Text('Finish', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                              // 1. Part Photo Shutter Button
+                              GestureDetector(
+                                onTap: () => _captureAndSave(isTag: false),
+                                child: Container(
+                                  width: 74,
+                                  height: 74,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    border: Border.all(color: _capturing ? Colors.grey : Colors.blue.shade100, width: 4),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
+                                    ],
+                                  ),
+                                  child: _capturing
+                                      ? const Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator(strokeWidth: 3))
+                                      : const Icon(Icons.camera_alt, size: 34, color: Color(0xFF0B3D91)),
+                                ),
+                              ),
+
+                              const SizedBox(width: 14),
+
+                              // 2. Dedicated Part Tag Capture Button (Saves to Part_Tags folder)
+                              GestureDetector(
+                                onTap: () => _captureAndSave(isTag: true),
+                                child: Container(
+                                  width: 74,
+                                  height: 74,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xFFE65100),
+                                    border: Border.all(color: Colors.amberAccent, width: 3),
+                                    boxShadow: const [
+                                      BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
+                                    ],
+                                  ),
+                                  child: const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.qr_code_scanner, size: 28, color: Colors.white),
+                                      Text(
+                                        'TAG',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 10,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
+
+                          // Finish Session Button
+                          GestureDetector(
+                            onTap: _finish,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 3))],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                  SizedBox(width: 4),
+                                  Text('Finish', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
+    );
+  }
+
+  /// Discrete zoom buttons (-1, -0.5, 1.0x, +0.5, +1)
+  Widget _buildZoomBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _zoomStepBtn('-1.0', () => _stepZoom(-1.0)),
+          const SizedBox(width: 4),
+          _zoomStepBtn('-0.5', () => _stepZoom(-0.5)),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              _setZoom(_minZoom);
+              HapticFeedback.selectionClick();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B3D91),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white38),
+              ),
+              child: Text(
+                '${_zoom.toStringAsFixed(1)}x',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _zoomStepBtn('+0.5', () => _stepZoom(0.5)),
+          const SizedBox(width: 4),
+          _zoomStepBtn('+1.0', () => _stepZoom(1.0)),
+        ],
+      ),
+    );
+  }
+
+  Widget _zoomStepBtn(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 }

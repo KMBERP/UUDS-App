@@ -35,15 +35,17 @@ class StoragePaths {
     return dir;
   }
 
-  /// `UUDS / <Aircraft Reg> / <Inspection Type> / <Location>` working folder
+  /// `UUDS / [Photos | Part_Tags] / <Aircraft Reg> / <Inspection Type> / <Location>` working folder
   /// used to store the private, always-reliable copy of each photo.
   static Future<Directory> photoDirectory({
     required String aircraftReg,
     required String inspectionTypeLabel,
     required String location,
+    bool isTag = false,
   }) async {
+    final sub = isTag ? 'Part_Tags' : 'Photos';
     final dir = Directory(
-      '${(await root()).path}/${_sanitize(aircraftReg)}/${_sanitize(inspectionTypeLabel)}/${_sanitize(location)}',
+      '${(await root()).path}/$sub/${_sanitize(aircraftReg)}/${_sanitize(inspectionTypeLabel)}/${_sanitize(location)}',
     );
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
@@ -64,8 +66,8 @@ class StoragePaths {
   }
 
   /// Mirrors an already-saved photo into the device's public Gallery via
-  /// MediaStore, nested exactly as
-  /// `Pictures/UUDS/<Aircraft>/<InspectionType>/<Location>/<fileName>`.
+  /// MediaStore, nested as:
+  /// `Pictures/UUDS/[Photos | Part_Tags]/<Aircraft>/<InspectionType>/<Location>/<fileName>`.
   /// Returns the real success/error info from the native side so a failure
   /// can be shown to the user instead of silently disappearing. Failure
   /// here is non-fatal either way — the private working copy (used by the
@@ -76,6 +78,7 @@ class StoragePaths {
     required String inspectionTypeLabel,
     required String location,
     required String fileName,
+    bool isTag = false,
   }) async {
     if (!Platform.isAndroid) {
       return const GalleryPublishResult(success: false, error: 'Not on Android');
@@ -87,6 +90,7 @@ class StoragePaths {
         'type': _sanitize(inspectionTypeLabel),
         'location': _sanitize(location),
         'fileName': fileName,
+        'isTag': isTag,
       });
       if (raw is Map) {
         final success = raw['success'] == true;

@@ -57,7 +57,7 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Aircraft: ${photo.aircraftReg}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text('Type: ${photo.inspectionType}'),
+            Text('Type: ${photo.inspectionType} · ${photo.isTag == 1 ? "Part Tag" : "Part Photo"}'),
             Text('Part Location: ${photo.partLocation}'),
             Text('Inspector: ${photo.employeeName} (${_idLabel(photo)})'),
             Text('Date: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.parse(photo.timestamp))}'),

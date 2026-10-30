@@ -28,7 +28,11 @@ Future<bool> showTagScanDialog(BuildContext context, InspectionPhoto photo) asyn
   final locCtrl = TextEditingController(text: (extracted['location'] ?? photo.tagLocation).toUpperCase());
   final rawText = extracted['rawText'] ?? '';
   final error = extracted['error'];
-  final qtyCtrl = TextEditingController(text: photo.tagQty.isNotEmpty ? photo.tagQty : '1');
+  final qtyCtrl = TextEditingController(
+    text: photo.tagQty.isNotEmpty
+        ? photo.tagQty
+        : ((extracted['tagQty'] != null && extracted['tagQty']!.isNotEmpty) ? extracted['tagQty']! : '1'),
+  );
 
   final result = await showDialog<bool>(
     context: context,

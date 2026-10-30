@@ -25,14 +25,21 @@ class BackupUtil {
 
     final archive = Archive();
 
-    if (await photosRoot.exists()) {
-      await for (final aircraftEntity in photosRoot.list()) {
-        if (aircraftEntity is! Directory) continue;
-        final aircraftName = p.basename(aircraftEntity.path);
-        if (aircraftName == 'Backups' || aircraftName == 'Reports') continue;
-        if (!aircraftRegs.contains(aircraftName)) continue;
+    Future<void> scanAndAdd(Directory dir) async {
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list()) {
+        if (entity is! Directory) continue;
+        final name = p.basename(entity.path);
+        if (name == 'Backups' || name == 'Reports') continue;
 
-        await for (final typeEntity in aircraftEntity.list()) {
+        if (name == 'Photos' || name == 'Part_Tags') {
+          await scanAndAdd(entity);
+          continue;
+        }
+
+        if (!aircraftRegs.contains(name)) continue;
+
+        await for (final typeEntity in entity.list()) {
           if (typeEntity is! Directory) continue;
 
           await for (final locEntity in typeEntity.list()) {
@@ -50,6 +57,10 @@ class BackupUtil {
           }
         }
       }
+    }
+
+    if (await photosRoot.exists()) {
+      await scanAndAdd(photosRoot);
     }
 
     final dbFile = File(dbPath);

@@ -56,6 +56,7 @@ class InspectionPhoto {
   final String tagDescription;
   final String tagLocation;
   final String tagQty;
+  final int isTag; // 0 = general part photo, 1 = part tag photo
 
   InspectionPhoto({
     this.id,
@@ -70,6 +71,7 @@ class InspectionPhoto {
     this.tagDescription = '',
     this.tagLocation = '',
     this.tagQty = '',
+    this.isTag = 0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -85,6 +87,7 @@ class InspectionPhoto {
         'tagDescription': tagDescription,
         'tagLocation': tagLocation,
         'tagQty': tagQty,
+        'isTag': isTag,
       };
 
   factory InspectionPhoto.fromMap(Map<String, dynamic> m) => InspectionPhoto(
@@ -100,5 +103,6 @@ class InspectionPhoto {
         tagDescription: (m['tagDescription'] as String?) ?? '',
         tagLocation: (m['tagLocation'] as String?) ?? '',
         tagQty: (m['tagQty'] as String?) ?? '',
+        isTag: (m['isTag'] as int?) ?? 0,
       );
 }

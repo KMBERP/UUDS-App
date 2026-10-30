@@ -1,55 +1,140 @@
+import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../db/db_helper.dart';
 
-/// Runs on-device text recognition on a photo of an Engineering Department
-/// tag and tries to pull out the Part No, Description, and Location fields.
+/// High-accuracy on-device text recognition and tag extraction for aviation tags.
 ///
-/// Printed field labels (PART NO, DESCRIPTION, LOCATION...) recognize
-/// reliably. Handwritten entries next to them are best-effort only —
-/// the caller should always let the user review/correct before saving.
-/// Raw recognized text is always returned so mismatches can be diagnosed.
+/// Uses spatial 2D bounding-box layout analysis (same-row right, column-below),
+/// multi-label collision avoidance, and aviation part-number heuristics.
 class OcrUtil {
+  static const List<String> _partNoLabels = [
+    'PART NO',
+    'PART NUMBER',
+    'PART NO.',
+    'PARTNO',
+    'P/N',
+    'P.N.',
+    'P / N',
+    'ASSY P/N',
+    'ASSY NO',
+    'PART #',
+    'ITEM NO',
+  ];
+
+  static const List<String> _descLabels = [
+    'DESCRIPTION',
+    'DESC.',
+    'DESC',
+    'NOMENCLATURE',
+    'ITEM NAME',
+    'PART NAME',
+    'ITEM DESC',
+  ];
+
+  static const List<String> _locLabels = [
+    'LOCATION',
+    'LOC.',
+    'LOC',
+    'BIN/LOC',
+    'BIN',
+    'REMOVED FROM',
+    'INSTALL LOC',
+    'STATION',
+  ];
+
+  static const List<String> _qtyLabels = [
+    'QTY',
+    'QUANTITY',
+    'QTY.',
+    'COUNT',
+    'QNTY',
+    'TOTAL QTY',
+    'PCS',
+  ];
+
+  static const List<String> _allKnownLabels = [
+    ..._partNoLabels,
+    ..._descLabels,
+    ..._locLabels,
+    ..._qtyLabels,
+    'SERIAL NO',
+    'SERIAL',
+    'S/N',
+    'SER NO',
+    'DATE',
+    'SIGNATURE',
+    'SIGN',
+    'STATUS',
+    'SERVICEABLE',
+    'UNSERVICEABLE',
+    'SCRAP',
+    'REASON',
+    'WORK ORDER',
+    'W/O',
+    'BATCH',
+    'ENGINEERING',
+    'DEPARTMENT',
+    'INSPECTED BY',
+    'AIRCRAFT',
+  ];
+
   static Future<Map<String, String>> extractTagFields(String imagePath) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
       final inputImage = InputImage.fromFilePath(imagePath);
-      final result = await recognizer.processImage(inputImage);
+      final recognizedText = await recognizer.processImage(inputImage);
 
-      final lines = result.text
-          .split('\n')
-          .map((l) => _cleanLine(l))
-          .where((l) => l.isNotEmpty)
-          .toList();
-
-      String findAfter(List<String> keys) {
-        for (int i = 0; i < lines.length; i++) {
-          final upper = lines[i].toUpperCase();
-          for (final k in keys) {
-            final idx = upper.indexOf(k);
-            if (idx == -1) continue;
-            // Everything right after the label - e.g. for "PART NO: ABC123"
-            // this starts as ": ABC123". Strip the separator punctuation
-            // (colon/dot/dash) the label leaves behind, not just whitespace,
-            // or the value ends up polluted with a leading ":" that was
-            // never meant to be part of it.
-            final rest = _stripLeadingPunctuation(lines[i].substring(idx + k.length));
-            if (rest.isNotEmpty) return rest;
-            if (i + 1 < lines.length) return _stripLeadingPunctuation(lines[i + 1]);
+      final lines = <_OcrLine>[];
+      for (final block in recognizedText.blocks) {
+        for (final line in block.lines) {
+          final cleaned = _cleanRawLine(line.text);
+          if (cleaned.isNotEmpty) {
+            lines.add(_OcrLine(
+              rawText: line.text,
+              cleanedText: cleaned,
+              upperText: cleaned.toUpperCase(),
+              box: line.boundingBox,
+            ));
           }
         }
-        return '';
       }
 
+      // Sort lines top-to-bottom, then left-to-right
+      lines.sort((a, b) {
+        final dy = (a.box.top - b.box.top).abs();
+        if (dy < 12) return a.box.left.compareTo(b.box.left);
+        return a.box.top.compareTo(b.box.top);
+      });
+
+      String partNo = _extractField(lines, _partNoLabels);
+      String description = _extractField(lines, _descLabels);
+      String location = _extractField(lines, _locLabels);
+      String qty = _extractField(lines, _qtyLabels);
+
+      // Heuristic fallback for Part No if label was missed
+      if (partNo.isEmpty || _isLikelyLabelOnly(partNo)) {
+        partNo = _findAviationPartNoFallback(lines);
+      }
+
+      // Snap location to known aircraft lavatory/cabin locations if close match
+      location = _normalizeLocation(location);
+
+      // Normalize Quantity: extract pure digits, fallback to 1
+      qty = _normalizeQty(qty);
+
       return {
-        'partNo': findAfter(['PART NO', 'PARTNO', 'P/N']),
-        'description': findAfter(['DESCRIPTION', 'DESC']),
-        'location': findAfter(['LOCATION', 'LOC.']),
-        'rawText': result.text,
+        'partNo': partNo.toUpperCase().trim(),
+        'description': description.toUpperCase().trim(),
+        'location': location.toUpperCase().trim(),
+        'tagQty': qty,
+        'rawText': recognizedText.text,
       };
     } catch (e) {
       return {
         'partNo': '',
         'description': '',
         'location': '',
+        'tagQty': '1',
         'rawText': '',
         'error': e.toString(),
       };
@@ -58,18 +143,155 @@ class OcrUtil {
     }
   }
 
-  /// Strips leading dotted/underscore placeholder lines (e.g. "PART NO.....")
-  /// down to just the label + colon, and removes stray dot leaders anywhere.
-  static String _cleanLine(String line) {
-    var cleaned = line.replaceAll(RegExp(r'\.{2,}'), ' ').trim();
-    cleaned = cleaned.replaceAll(RegExp(r'_{2,}'), ' ').trim();
-    return _stripLeadingPunctuation(cleaned);
+  /// Extracts value using both inline search and spatial bounding-box column lookup
+  static String _extractField(List<_OcrLine> lines, List<String> targetLabels) {
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      for (final label in targetLabels) {
+        final idx = line.upperText.indexOf(label);
+        if (idx == -1) continue;
+
+        // 1. Check remainder on the same line
+        final remainder = line.cleanedText.substring(idx + label.length).trim();
+        final inlineVal = _stripLeadingSeparators(remainder);
+
+        // Check if inline value is present and not immediately interrupted by another label
+        if (inlineVal.isNotEmpty) {
+          final cutVal = _truncateAtNextLabel(inlineVal);
+          if (cutVal.isNotEmpty && !_isLikelyLabelOnly(cutVal)) {
+            return cutVal;
+          }
+        }
+
+        // 2. Spatial lookup: Check line directly below this label (e.g. table/box layout)
+        final belowVal = _findLineDirectlyBelow(lines, line, i);
+        if (belowVal.isNotEmpty && !_isLikelyLabelOnly(belowVal)) {
+          return belowVal;
+        }
+      }
+    }
+    return '';
   }
 
-  /// Removes leading colons/dots/dashes/whitespace - the separator a label
-  /// like "PART NO:" or "LOCATION -" leaves behind once the label itself
-  /// has been cut off, so it never ends up stuck onto the extracted value.
-  static String _stripLeadingPunctuation(String s) {
-    return s.replaceFirst(RegExp(r'^[:.\-\s]+'), '').trim();
+  /// Finds a text line physically positioned directly below [targetLine] within reasonable bounding box bounds
+  static String _findLineDirectlyBelow(List<_OcrLine> allLines, _OcrLine targetLine, int targetIndex) {
+    _OcrLine? bestCandidate;
+    double minDistance = double.infinity;
+
+    for (int j = 0; j < allLines.length; j++) {
+      if (j == targetIndex) continue;
+      final cand = allLines[j];
+
+      // Must be below the target line
+      final verticalGap = cand.box.top - targetLine.box.bottom;
+      if (verticalGap < -4 || verticalGap > (targetLine.box.height * 3.5)) continue;
+
+      // Must have horizontal overlap or close horizontal alignment
+      final horizontalOverlap = (cand.box.left < targetLine.box.right + 30) &&
+                                (cand.box.right > targetLine.box.left - 30);
+      if (!horizontalOverlap) continue;
+
+      // Disqualify if it's another known label
+      if (_isLikelyLabelOnly(cand.upperText)) continue;
+
+      if (verticalGap < minDistance) {
+        minDistance = verticalGap;
+        bestCandidate = cand;
+      }
+    }
+
+    if (bestCandidate != null) {
+      return _stripLeadingSeparators(bestCandidate.cleanedText);
+    }
+    return '';
   }
+
+  /// Truncates string if another label begins on the same line (e.g. "BACB30NE4-10 QTY: 2")
+  static String _truncateAtNextLabel(String s) {
+    final upper = s.toUpperCase();
+    int earliest = s.length;
+    for (final l in _allKnownLabels) {
+      final pos = upper.indexOf(l);
+      if (pos > 0 && pos < earliest) {
+        earliest = pos;
+      }
+    }
+    return s.substring(0, earliest).trim();
+  }
+
+  static bool _isLikelyLabelOnly(String s) {
+    final upper = s.trim().toUpperCase();
+    for (final l in _allKnownLabels) {
+      if (upper == l || upper == '$l:' || upper == '$l -' || upper == '$l.') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Searches lines for standard aviation part number patterns (alphanumeric with dashes/slashes)
+  static String _findAviationPartNoFallback(List<_OcrLine> lines) {
+    // Standard aerospace part syntax: e.g. BACB30NE4-10, D28271000-001, NAS1149F0332P, 10-60477-1
+    final aviationRegex = RegExp(r'\b[A-Z0-9]{2,10}[-\/][A-Z0-9\-\/]{2,15}\b');
+    for (final line in lines) {
+      if (_isLikelyLabelOnly(line.upperText)) continue;
+      // Skip date lines
+      if (RegExp(r'\b\d{2}[-\/][A-Z]{3}[-\/]\d{2,4}\b').hasMatch(line.upperText)) continue;
+      if (RegExp(r'\b\d{4}[-\/]\d{2}[-\/]\d{2}\b').hasMatch(line.upperText)) continue;
+      // Skip aircraft regs like A6-XXX
+      if (RegExp(r'\bA6-[A-Z]{3}\b').hasMatch(line.upperText)) continue;
+
+      final match = aviationRegex.firstMatch(line.upperText);
+      if (match != null) {
+        return match.group(0)!;
+      }
+    }
+    return '';
+  }
+
+  /// Snaps extracted location to canonical locations (e.g. LAV 1MC)
+  static String _normalizeLocation(String raw) {
+    if (raw.isEmpty) return '';
+    final cleaned = raw.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
+    for (final loc in kDefaultPartLocations) {
+      final canonicalCleaned = loc.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
+      if (cleaned == canonicalCleaned || cleaned.contains(canonicalCleaned)) {
+        return loc;
+      }
+    }
+    return _stripLeadingSeparators(raw);
+  }
+
+  static String _normalizeQty(String raw) {
+    if (raw.isEmpty) return '1';
+    final digits = RegExp(r'\d+').firstMatch(raw);
+    if (digits != null && digits.group(0) != null) {
+      return digits.group(0)!;
+    }
+    return '1';
+  }
+
+  static String _cleanRawLine(String line) {
+    var s = line.replaceAll(RegExp(r'\.{2,}'), ' ').trim();
+    s = s.replaceAll(RegExp(r'_{2,}'), ' ').trim();
+    return s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  }
+
+  static String _stripLeadingSeparators(String s) {
+    return s.replaceFirst(RegExp(r'^[:.\-=\s#]+'), '').trim();
+  }
+}
+
+class _OcrLine {
+  final String rawText;
+  final String cleanedText;
+  final String upperText;
+  final Rect box;
+
+  _OcrLine({
+    required this.rawText,
+    required this.cleanedText,
+    required this.upperText,
+    required this.box,
+  });
 }

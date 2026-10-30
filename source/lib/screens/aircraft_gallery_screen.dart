@@ -341,6 +341,22 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
                               ),
                             ),
                           ),
+                          if (p.isTag == 1)
+                            Positioned(
+                              left: 2,
+                              bottom: 14,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.amberAccent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'TAG',
+                                  style: TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ),
                           if (!_selectMode)
                             Positioned(
                               right: 2,

@@ -20,7 +20,7 @@ All data (photos + database) stays on the device. No internet needed to use the 
 3. Once pushed, go to the **"Actions"** tab of your repo. A workflow called
    **"Build UUDS Parts Inspection APK"** will start automatically (takes ~5-8 minutes).
 4. When it finishes (green check ✅), click into that run → scroll to **"Artifacts"** →
-   download **UUDS-Parts-Inspection-APK.zip**. Unzip it — inside is `app-release.apk`.
+   download **UUDS App.zip**. Unzip it — inside is `UUDS App.apk`.
 5. Transfer that APK to your Android phone/tablet (email it to yourself, or USB, or
    Google Drive) and tap it to install. You'll need to allow "Install unknown apps" for
    that once (Android will prompt you automatically).
@@ -68,6 +68,33 @@ Bluetooth/USB — all offline, sharing just uses whatever app you pick.
 - No PIN/login is set up (single shared device assumption). Say the word if you want a
   simple PIN lock.
 - Minimum Android version supported: Android 7.0 (covers virtually all work devices).
+
+## Update 14 (High-Accuracy Spatial OCR, Dedicated Tags Folder, Quick-Step Zoom, Tablet Hardware Key & Animated Hangar)
+1. **High-Accuracy Spatial OCR Engine**:
+   - Replaced linear line-split OCR with a 2D bounding-box spatial layout engine.
+   - Accurately associates values on the same row (to the right) or directly in the column below headers, completely eliminating the bug where labels like "DESCRIPTION:" were captured as the Part Number.
+   - Built-in Aviation Part Number RegEx fallback to identify standard aerospace part numbers even on worn or faded tags.
+   - Standard location snapping (auto-corrects common OCR misreads like `LAV1MC` or `LAV-1MC` directly to `LAV 1MC`).
+   - Clean numeric quantity extraction with automatic default to `1`.
+2. **Dedicated Part Tags Folder (`Part_Tags`)**:
+   - Cleanly separates component photos from part tags.
+   - In-app Dual Shutter: Primary Shutter saves component photos to `Pictures/UUDS/Photos/...`; Dedicated Tag Shutter saves directly to `Pictures/UUDS/Part_Tags/...` (with `TAG_` prefix), tags it in the database (`isTag = 1`), and immediately launches the review dialog.
+   - On-screen Tag Framing Guide to guarantee optical alignment.
+   - Gallery shows a dedicated `TAG` badge on tag photos.
+3. **Quick-Step Zoom Bar**:
+   - Added discrete, glove-friendly zoom buttons: `[-1.0]`, `[-0.5]`, `[1.0x]`, `[+0.5]`, and `[+1.0]`.
+   - Real-time zoom level indicator badge with tactile haptic feedback.
+4. **Enhanced Camera Focus & Torch Mode**:
+   - Pre-capture focus lock prevents shutter blur when the shutter button is pressed.
+   - Integrated Flashlight/Torch toggle button in the camera bar for dark bins, cargo holds, and lavatory under-sink areas.
+   - Precision corner-bracket technical reticle on tap-to-focus.
+5. **Universal Tablet Side Button & Shutter Key**:
+   - Enhanced `MainActivity.kt` key interception to capture Samsung dedicated Active Key (`KEYCODE_BUTTON_1` / 188), programmable red key (`KEYCODE_PROG_RED` / 303), and volume keys when the camera screen is active.
+6. **Guaranteed In-Place App Updates**:
+   - Added automated CI `versionCode` injection (`100 + GITHUB_RUN_NUMBER`) in `.github/workflows/build-apk.yml`. Every single build now has a strictly higher version code, preventing Android's `PackageInstaller` from prompting for uninstall.
+7. **Cinematic Hangar Visual on Home Screen**:
+   - Replaced static background with an aerospace-grade animated aircraft hangar scene (`splash_hangar_workshop.jpg`).
+   - Features gentle Ken Burns pan and zoom motion, and smoothly transitions from industrial monochrome/grayscale into rich color over 4.5 seconds.
 
 ## Update 13 (fixed: app closing in large photo folders)
 Found a real memory crash. Every photo thumbnail in the Gallery grid was being decoded at its

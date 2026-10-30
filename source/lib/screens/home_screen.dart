@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, int> _stats = {
     'aircraft': 0,
     'totalPhotos': 0,
@@ -33,9 +33,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   DateTime? _lastBackPress;
 
+  // Hangar background motion and grayscale-to-color transition controllers
+  late final AnimationController _motionController;
+  late final AnimationController _colorController;
+
   @override
   void initState() {
     super.initState();
+
+    _motionController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 18),
+    )..repeat(reverse: true);
+
+    _colorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4500),
+    );
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _colorController.forward();
+    });
+
     _loadStats();
     if (Session.currentEmployee != null) {
       // Switching back to the Home tab: the inspector is still "logged in"
@@ -84,8 +102,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _motionController.dispose();
+    _colorController.dispose();
     _idController.dispose();
     super.dispose();
+  }
+
+  /// Interpolates from pure luminance grayscale (t=0) to full color identity matrix (t=1)
+  List<double> _buildColorMatrix(double t) {
+    final inv = 1.0 - t;
+    final lr = 0.2126 * inv;
+    final lg = 0.7152 * inv;
+    final lb = 0.0722 * inv;
+    return [
+      lr + t, lg,     lb,     0, 0,
+      lr,     lg + t, lb,     0, 0,
+      lr,     lg,     lb + t, 0, 0,
+      0,      0,      0,      1, 0,
+    ];
   }
 
   Future<void> _loadStats() async {
@@ -199,7 +233,30 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset('assets/branding/home_background.jpg', fit: BoxFit.cover),
+          // Living hangar visual: slow Ken Burns pan/zoom + gradual grayscale-to-color transition
+          AnimatedBuilder(
+            animation: Listenable.merge([_motionController, _colorController]),
+            builder: (context, child) {
+              final t = _colorController.value;
+              final panX = (_motionController.value - 0.5) * 32.0;
+              final scale = 1.05 + (_motionController.value * 0.08);
+
+              return Transform.translate(
+                offset: Offset(panX, 0),
+                child: Transform.scale(
+                  scale: scale,
+                  child: ColorFiltered(
+                    colorFilter: ColorFilter.matrix(_buildColorMatrix(t)),
+                    child: Image.asset(
+                      'assets/branding/splash_hangar_workshop.jpg',
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -207,8 +264,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.black.withOpacity(0.65),
-                  Colors.black.withOpacity(0.25),
-                  Colors.black.withOpacity(0.75),
+                  Colors.black.withOpacity(0.20),
+                  Colors.black.withOpacity(0.80),
                 ],
                 stops: const [0.0, 0.35, 1.0],
               ),

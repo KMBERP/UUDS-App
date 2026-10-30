@@ -48,7 +48,7 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE employees(
@@ -93,7 +93,8 @@ class DBHelper {
             tagPartNo TEXT DEFAULT '',
             tagDescription TEXT DEFAULT '',
             tagLocation TEXT DEFAULT '',
-            tagQty TEXT DEFAULT ''
+            tagQty TEXT DEFAULT '',
+            isTag INTEGER DEFAULT 0
           )
         ''');
         // Note: part_locations is no longer seeded here - there's no
@@ -202,6 +203,10 @@ class DBHelper {
             where: 'tagLocation = ?',
             whereArgs: ['LAV 1 MC'],
           );
+        }
+        if (oldVersion < 8) {
+          // Version 8: Add dedicated isTag column to separate part photos (0) from part tags (1)
+          await db.execute("ALTER TABLE photos ADD COLUMN isTag INTEGER DEFAULT 0");
         }
       },
     );
@@ -377,6 +382,7 @@ class DBHelper {
     String? partLocation,
     String? fromDate,
     String? toDate,
+    int? isTag,
   }) async {
     final db = await database;
     final where = <String>[];
@@ -400,6 +406,10 @@ class DBHelper {
     if (toDate != null) {
       where.add('timestamp <= ?');
       args.add(toDate);
+    }
+    if (isTag != null) {
+      where.add('isTag = ?');
+      args.add(isTag);
     }
     final rows = await db.query(
       'photos',
