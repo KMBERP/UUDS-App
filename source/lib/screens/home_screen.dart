@@ -33,26 +33,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   DateTime? _lastBackPress;
 
-  // Hangar background motion and grayscale-to-color transition controllers
-  late final AnimationController _motionController;
-  late final AnimationController _colorController;
+  // Clean entrance fade controller for hangar background visual
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    _motionController = AnimationController(
+    _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat(reverse: true);
-
-    _colorController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4500),
+      duration: const Duration(milliseconds: 600),
     );
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) _colorController.forward();
-    });
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeIn);
+    _fadeController.forward();
 
     _loadStats();
     if (Session.currentEmployee != null) {
@@ -102,24 +96,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _motionController.dispose();
-    _colorController.dispose();
+    _fadeController.dispose();
     _idController.dispose();
     super.dispose();
-  }
-
-  /// Interpolates from pure luminance grayscale (t=0) to full color identity matrix (t=1)
-  List<double> _buildColorMatrix(double t) {
-    final inv = 1.0 - t;
-    final lr = 0.2126 * inv;
-    final lg = 0.7152 * inv;
-    final lb = 0.0722 * inv;
-    return [
-      lr + t, lg,     lb,     0, 0,
-      lr,     lg + t, lb,     0, 0,
-      lr,     lg,     lb + t, 0, 0,
-      0,      0,      0,      1, 0,
-    ];
   }
 
   Future<void> _loadStats() async {
@@ -233,29 +212,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Living hangar visual: slow Ken Burns pan/zoom + gradual grayscale-to-color transition
-          AnimatedBuilder(
-            animation: Listenable.merge([_motionController, _colorController]),
-            builder: (context, child) {
-              final t = _colorController.value;
-              final panX = (_motionController.value - 0.5) * 32.0;
-              final scale = 1.05 + (_motionController.value * 0.08);
-
-              return Transform.translate(
-                offset: Offset(panX, 0),
-                child: Transform.scale(
-                  scale: scale,
-                  child: ColorFiltered(
-                    colorFilter: ColorFilter.matrix(_buildColorMatrix(t)),
-                    child: Image.asset(
-                      'assets/branding/splash_hangar_workshop.jpg',
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
-                  ),
-                ),
-              );
-            },
+          // Clean, crisp hangar visual with an elegant 600ms entrance fade
+          FadeTransition(
+            opacity: _fadeAnimation,
+            child: Image.asset(
+              'assets/branding/splash_hangar_workshop.jpg',
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
           ),
           Container(
             decoration: BoxDecoration(
@@ -263,9 +227,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.65),
-                  Colors.black.withOpacity(0.20),
-                  Colors.black.withOpacity(0.80),
+                  Colors.black.withOpacity(0.55),
+                  Colors.black.withOpacity(0.18),
+                  Colors.black.withOpacity(0.75),
                 ],
                 stops: const [0.0, 0.35, 1.0],
               ),
@@ -275,30 +239,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: RefreshIndicator(
               onRefresh: _loadStats,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
                 children: [
                   const Text(
                     'WELCOME TO',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: kHeaderBlue, fontSize: 13, letterSpacing: 2, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12.5,
+                      letterSpacing: 2.5,
+                      fontWeight: FontWeight.w700,
+                      shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                    ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   const Text(
                     'UUDS PARTS INSPECTION',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: kHeaderBlue, fontSize: 22, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                      shadows: [Shadow(color: Colors.black87, blurRadius: 6)],
+                    ),
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Streamline your inspections efficiently',
+                    'Aviation Maintenance Quality Assurance',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: kHeaderBlue, fontSize: 12.5, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   _statsCard(),
-                  const SizedBox(height: 72),
+                  const SizedBox(height: 16),
                   _inspectorCard(),
-                  const SizedBox(height: 72),
+                  const SizedBox(height: 16),
                   _inspectionTypeSection(),
                   const SizedBox(height: 16),
                 ],

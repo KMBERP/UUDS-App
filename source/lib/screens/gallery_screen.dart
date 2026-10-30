@@ -9,6 +9,7 @@ import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import 'aircraft_gallery_screen.dart';
+import 'all_part_tags_screen.dart';
 
 /// Landing screen for the Gallery tab: pick an aircraft, then it opens into
 /// a Receiving/Dispatch tabbed view of just that aircraft's photos (see
@@ -72,6 +73,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
       idByName: _idByName,
     )));
     // Photos may have been deleted/shared while inside - refresh counts.
+    _load();
+  }
+
+  Future<void> _openAllTagsView() async {
+    await Navigator.of(context).push(fadeSlideRoute(AllPartTagsScreen(
+      idByName: _idByName,
+    )));
     _load();
   }
 
@@ -215,6 +223,80 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
                 onChanged: (v) => setState(() => _search = v),
+              ),
+            ),
+            // Dedicated Part Tags Folder Banner
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: Colors.amber.shade600, width: 1.5),
+                ),
+                color: const Color(0xFFFFF8E1),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _openAllTagsView,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE65100),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(color: const Color(0xFFE65100).withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 2)),
+                            ],
+                          ),
+                          child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 26),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'PART TAGS FOLDER',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 14.5,
+                                      color: Color(0xFFB71C1C),
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE65100),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${_photos.where((p) => p.isTag == 1 || p.tagPartNo.isNotEmpty).length} TAGS',
+                                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'View all scanned airline & repair tags across all aircraft',
+                                style: TextStyle(color: Colors.brown.shade800, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: Color(0xFFE65100), size: 22),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
             Expanded(

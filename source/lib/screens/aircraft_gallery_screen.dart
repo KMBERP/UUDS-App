@@ -38,7 +38,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     // Rebuilds the custom tab header as the selection/swipe animates, so
     // the "3D" raised/sunken look tracks the live TabBarView position.
     _tabController.addListener(() => setState(() {}));
@@ -190,10 +190,10 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          margin: EdgeInsets.symmetric(horizontal: 6, vertical: selected ? 0 : 6),
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          margin: EdgeInsets.symmetric(horizontal: 3, vertical: selected ? 0 : 4),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             gradient: selected
                 ? LinearGradient(
                     begin: Alignment.topCenter,
@@ -204,7 +204,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
             color: selected ? null : color.withOpacity(0.10),
             boxShadow: selected
                 ? [
-                    BoxShadow(color: color.withOpacity(0.45), blurRadius: 12, offset: const Offset(0, 5)),
+                    BoxShadow(color: color.withOpacity(0.40), blurRadius: 8, offset: const Offset(0, 3)),
                     const BoxShadow(color: Colors.white, blurRadius: 0, spreadRadius: -1, offset: Offset(0, -1)),
                   ]
                 : [],
@@ -213,14 +213,16 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: selected ? 24 : 20, color: selected ? Colors.white : color),
-              const SizedBox(height: 4),
+              Icon(icon, size: selected ? 21 : 18, color: selected ? Colors.white : color),
+              const SizedBox(height: 3),
               Text(
                 '$label ($count)',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: selected ? Colors.white : color,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  fontSize: selected ? 14 : 13,
+                  fontSize: selected ? 11.5 : 10.5,
                 ),
               ),
             ],
@@ -228,6 +230,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
         ),
       ),
     );
+  }
   }
 
   Widget _buildTypeTab(String inspectionType) {
@@ -422,6 +425,180 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
     );
   }
 
+  Widget _buildTagsTab() {
+    final tags = _photos.where((p) => p.isTag == 1 || p.tagPartNo.isNotEmpty).toList();
+    if (tags.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.qr_code_scanner, size: 52, color: Colors.grey.shade400),
+              const SizedBox(height: 12),
+              Text(
+                'No part tags recorded for ${widget.aircraftReg}.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Use the orange [TAG] button in the Camera to snap airline tags.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black45, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Group tags by location
+    final tagLocMap = <String, List<InspectionPhoto>>{};
+    for (final t in tags) {
+      final loc = t.tagLocation.isNotEmpty ? t.tagLocation : t.partLocation;
+      tagLocMap.putIfAbsent(loc, () => []).add(t);
+    }
+    final locNames = tagLocMap.keys.toList()..sort();
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      itemCount: locNames.length,
+      itemBuilder: (ctx, i) {
+        final locName = locNames[i];
+        final locTags = tagLocMap[locName]!;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            leading: const Icon(Icons.label_important, color: Color(0xFFE65100)),
+            title: Text('$locName (${locTags.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            children: locTags.map((p) {
+              final file = File(p.filePath);
+              final hasPartNo = p.tagPartNo.trim().isNotEmpty;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.black12, width: 0.5)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Thumbnail
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context)
+                            .push(fadeSlideRoute(PhotoViewerScreen(
+                              photos: tags,
+                              initialIndex: tags.indexOf(p),
+                              idByName: widget.idByName,
+                            )))
+                            .then((_) => _reload());
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Stack(
+                          children: [
+                            file.existsSync()
+                                ? Image.file(file, width: 68, height: 68, fit: BoxFit.cover, cacheWidth: 200)
+                                : Container(width: 68, height: 68, color: Colors.grey.shade300, child: const Icon(Icons.broken_image)),
+                            Positioned(
+                              top: 2,
+                              left: 2,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE65100),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'TAG',
+                                  style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Information
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  hasPartNo ? p.tagPartNo : 'PART NO NOT SCANNED',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13.5,
+                                    color: hasPartNo ? const Color(0xFF0B3D91) : Colors.red.shade700,
+                                  ),
+                                ),
+                              ),
+                              if (p.tagQty.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.amber.shade300),
+                                  ),
+                                  child: Text('QTY: ${p.tagQty}', style: TextStyle(fontSize: 9.5, color: Colors.amber.shade900, fontWeight: FontWeight.bold)),
+                                ),
+                            ],
+                          ),
+                          if (p.tagDescription.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                p.tagDescription,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11.5, color: Colors.black87, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${_formatTimestamp(p.timestamp)} · ${_idLabel(p)}',
+                            style: const TextStyle(fontSize: 10, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Action Buttons
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.qr_code_scanner, size: 20, color: Color(0xFFE65100)),
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Scan / Edit Tag OCR',
+                          onPressed: () => _scanTag(p),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.share, size: 18, color: Color(0xFF0B3D91)),
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Share',
+                          onPressed: () => _sharePhoto(p),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -438,7 +615,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
       body: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             color: Colors.white,
             child: Row(
               children: [
@@ -456,6 +633,13 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
                   color: kDispatch,
                   count: _locationsFor('Dispatch').values.fold<int>(0, (s, l) => s + l.length),
                 ),
+                _tabButton(
+                  index: 2,
+                  label: 'Part Tags',
+                  icon: Icons.qr_code_scanner,
+                  color: const Color(0xFFE65100),
+                  count: _photos.where((p) => p.isTag == 1 || p.tagPartNo.isNotEmpty).length,
+                ),
               ],
             ),
           ),
@@ -465,6 +649,7 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
               children: [
                 _buildTypeTab('Receiving'),
                 _buildTypeTab('Dispatch'),
+                _buildTagsTab(),
               ],
             ),
           ),

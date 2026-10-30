@@ -1,0 +1,9 @@
+UUDS App.apk
+*.apk
+*.zip
+UUDS-App-main-repo-root/
+push-update.bat
+build-apk.yml
+Reapir Parts Tag Sample/
+.idea/
+.vscode/

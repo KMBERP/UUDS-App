@@ -95,7 +95,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _startController(CameraDescription desc) async {
-    final controller = CameraController(desc, ResolutionPreset.veryHigh, enableAudio: false);
+    // ResolutionPreset.high (1080p) provides instant sensor capture with crisp quality and zero shutter lag
+    final controller = CameraController(desc, ResolutionPreset.high, enableAudio: false);
     await controller.initialize();
     if (!mounted) return;
     final minZoom = await controller.getMinZoomLevel();
@@ -199,17 +200,8 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _capturing = true);
     HapticFeedback.mediumImpact();
     try {
-      // Briefly lock focus to guarantee crisp exposure without shutter blur
-      try {
-        await _controller!.setFocusMode(FocusMode.locked);
-      } catch (_) {}
-
+      // Direct high-speed shutter snapshot without blocking auto-focus locks
       final xfile = await _controller!.takePicture();
-
-      // Restore auto focus
-      try {
-        await _controller!.setFocusMode(FocusMode.auto);
-      } catch (_) {}
 
       final savedPhoto = await _saveSourceFile(xfile.path, isTag: isTag);
       if (savedPhoto == null && mounted) {
@@ -794,61 +786,60 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  /// Discrete zoom buttons (-1, -0.5, 1.0x, +0.5, +1)
+  /// Fixed zoom preset buttons: 0.6x, 1.0x, 2.0x, 3.0x
   Widget _buildZoomBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.65),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white24),
+        color: Colors.black.withOpacity(0.70),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white24, width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 3)),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _zoomStepBtn('-1.0', () => _stepZoom(-1.0)),
-          const SizedBox(width: 4),
-          _zoomStepBtn('-0.5', () => _stepZoom(-0.5)),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              _setZoom(_minZoom);
-              HapticFeedback.selectionClick();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0B3D91),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white38),
-              ),
-              child: Text(
-                '${_zoom.toStringAsFixed(1)}x',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          _zoomStepBtn('+0.5', () => _stepZoom(0.5)),
-          const SizedBox(width: 4),
-          _zoomStepBtn('+1.0', () => _stepZoom(1.0)),
+          _zoomPresetPill('0.6x', 0.6),
+          const SizedBox(width: 6),
+          _zoomPresetPill('1.0x', 1.0),
+          const SizedBox(width: 6),
+          _zoomPresetPill('2.0x', 2.0),
+          const SizedBox(width: 6),
+          _zoomPresetPill('3.0x', 3.0),
         ],
       ),
     );
   }
 
-  Widget _zoomStepBtn(String label, VoidCallback onTap) {
+  Widget _zoomPresetPill(String label, double targetZoom) {
+    final effectiveTarget = targetZoom.clamp(_minZoom, _maxZoom);
+    final isSelected = (_zoom - effectiveTarget).abs() < 0.25;
+
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      onTap: () {
+        _setZoom(effectiveTarget);
+        HapticFeedback.selectionClick();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white12,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? const Color(0xFF0B3D91) : Colors.white12,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? Colors.amberAccent : Colors.transparent,
+            width: isSelected ? 1.5 : 0.5,
+          ),
         ),
         child: Text(
           label,
-          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white70,
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+          ),
         ),
       ),
     );
