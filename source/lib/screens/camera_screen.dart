@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/build_info.dart';
+import '../utils/ocr_util.dart';
 import '../utils/tag_scan_dialog.dart';
 import '../utils/page_transitions.dart';
 import '../utils/storage_paths.dart';
