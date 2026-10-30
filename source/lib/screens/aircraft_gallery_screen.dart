@@ -231,7 +231,6 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
       ),
     );
   }
-  }
 
   Widget _buildTypeTab(String inspectionType) {
     final locMap = _locationsFor(inspectionType);
