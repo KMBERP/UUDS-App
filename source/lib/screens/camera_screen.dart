@@ -52,6 +52,10 @@ class _CameraScreenState extends State<CameraScreen> {
   double _maxZoom = 1.0;
   double _zoom = 1.0;
   double _zoomStartValue = 1.0;
+  bool _isUltraWideLens = false;
+
+  List<CameraDescription> get _backCameras =>
+      _cameras.where((c) => c.lensDirection == CameraLensDirection.back).toList();
 
   // Tag alignment frame mode
   bool _tagGuideVisible = false;
@@ -135,7 +139,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _flipCamera() async {
     if (_cameras.length < 2 || !_ready) return;
-    setState(() => _ready = false);
+    setState(() {
+      _ready = false;
+      _isUltraWideLens = false;
+    });
     await _controller?.dispose();
     _cameraIndex = (_cameraIndex + 1) % _cameras.length;
     await _startController(_cameras[_cameraIndex]);
@@ -861,15 +868,64 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  Future<void> _applyZoomPreset(double targetZoom) async {
+    HapticFeedback.selectionClick();
+
+    if (targetZoom < 0.9) {
+      // 0.6x preset requested
+      if (_minZoom <= 0.8) {
+        // Native sensor supports <= 0.8x zoom ratio
+        await _setZoom(0.6);
+      } else if (_backCameras.length > 1) {
+        // Switch to secondary physical back camera (ultra-wide lens)
+        final uwCamera = _backCameras[1];
+        if (_controller?.description.name != uwCamera.name) {
+          setState(() {
+            _ready = false;
+            _isUltraWideLens = true;
+          });
+          _cameraIndex = _cameras.indexOf(uwCamera);
+          await _controller?.dispose();
+          await _startController(uwCamera);
+        }
+      } else {
+        // Single back camera without ultra-wide capability
+        await _setZoom(_minZoom);
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ultra-wide lens not available on this device sensor (min is ${_minZoom.toStringAsFixed(1)}x)'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } else {
+      // 1.0x, 2.0x, 3.0x presets requested
+      if (_isUltraWideLens && _backCameras.isNotEmpty) {
+        // Switch back to primary wide camera
+        final mainCamera = _backCameras[0];
+        setState(() {
+          _ready = false;
+          _isUltraWideLens = false;
+        });
+        _cameraIndex = _cameras.indexOf(mainCamera);
+        await _controller?.dispose();
+        await _startController(mainCamera);
+      }
+      await _setZoom(targetZoom);
+    }
+  }
+
   Widget _zoomPresetPill(String label, double targetZoom) {
-    final effectiveTarget = targetZoom.clamp(_minZoom, _maxZoom);
-    final isSelected = (_zoom - effectiveTarget).abs() < 0.25;
+    final bool is06Preset = targetZoom < 0.9;
+    final bool isSelected = is06Preset
+        ? (_isUltraWideLens || _zoom <= 0.8)
+        : (!_isUltraWideLens && (_zoom - targetZoom).abs() < 0.35);
 
     return GestureDetector(
-      onTap: () {
-        _setZoom(effectiveTarget);
-        HapticFeedback.selectionClick();
-      },
+      onTap: () => _applyZoomPreset(targetZoom),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

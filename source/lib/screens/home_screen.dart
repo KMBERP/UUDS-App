@@ -33,20 +33,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   DateTime? _lastBackPress;
 
-  // Clean entrance fade controller for hangar background visual
-  late final AnimationController _fadeController;
-  late final Animation<double> _fadeAnimation;
+  // Living hangar background motion and color-filling transition controllers
+  late final AnimationController _motionController;
+  late final AnimationController _colorController;
+  late final Animation<double> _colorAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    _fadeController = AnimationController(
+    _motionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(seconds: 16),
+    )..repeat(reverse: true);
+
+    _colorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
     );
-    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeIn);
-    _fadeController.forward();
+    _colorAnimation = CurvedAnimation(parent: _colorController, curve: Curves.easeOutCubic);
+    _colorController.forward();
 
     _loadStats();
     if (Session.currentEmployee != null) {
@@ -96,9 +102,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _fadeController.dispose();
+    _motionController.dispose();
+    _colorController.dispose();
     _idController.dispose();
     super.dispose();
+  }
+
+  /// Interpolates from cool grayscale (t=0) to full rich saturated color (t=1)
+  List<double> _buildColorMatrix(double t) {
+    final inv = 1.0 - t;
+    final lr = 0.2126 * inv;
+    final lg = 0.7152 * inv;
+    final lb = 0.0722 * inv;
+    return [
+      lr + t, lg,     lb,     0, 0,
+      lr,     lg + t, lb,     0, 0,
+      lr,     lg,     lb + t, 0, 0,
+      0,      0,      0,      1, 0,
+    ];
   }
 
   Future<void> _loadStats() async {
@@ -212,26 +233,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Clean, crisp hangar visual with an elegant 600ms entrance fade
-          FadeTransition(
-            opacity: _fadeAnimation,
-            child: Image.asset(
-              'assets/branding/splash_hangar_workshop.jpg',
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-            ),
+          // Animated DXB Stores & Emirates hangar scene:
+          // Subtle breathing zoom (1.0 to 1.04) and smooth, rich color-filling transition
+          AnimatedBuilder(
+            animation: Listenable.merge([_motionController, _colorAnimation]),
+            builder: (context, child) {
+              final scale = 1.0 + (_motionController.value * 0.04);
+              final t = _colorAnimation.value;
+              return Transform.scale(
+                scale: scale,
+                child: ColorFiltered(
+                  colorFilter: ColorFilter.matrix(_buildColorMatrix(t)),
+                  child: Image.asset(
+                    'assets/branding/home_background.jpg',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              );
+            },
           ),
+          // Balanced gradient overlay protecting text readability while showcasing vibrant hangar colors
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.55),
-                  Colors.black.withOpacity(0.18),
-                  Colors.black.withOpacity(0.75),
+                  Colors.black.withOpacity(0.50),
+                  Colors.black.withOpacity(0.06),
+                  Colors.black.withOpacity(0.68),
                 ],
-                stops: const [0.0, 0.35, 1.0],
+                stops: const [0.0, 0.40, 1.0],
               ),
             ),
           ),

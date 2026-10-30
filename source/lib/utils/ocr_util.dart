@@ -1,13 +1,18 @@
-import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../db/db_helper.dart';
 
 /// High-accuracy on-device text recognition and tag extraction for aviation tags.
 ///
-/// Tailored for Emirates Engineering Component Identification Tags and airline store slips.
-/// Uses spatial 2D bounding-box layout analysis, multi-label collision avoidance,
-/// dotted line stripping, and candidate token harvesting for instant 1-tap review.
+/// Specifically optimized for Emirates Engineering Component Identification Tags
+/// (QA/F/0363 Rev. 03) and airline store repair tags.
+///
+/// Handles:
+/// - Inline labels with dotted guidelines (e.g. `PART NO.:.... 13408A S/NO:.... 9000081255`)
+/// - Rotated/portrait tags photographed in maintenance hangars
+/// - Multi-line split values where label and handwriting appear on adjacent lines
+/// - Candidate chip harvesting for 1-tap review and assignment in UI
 class OcrUtil {
+  /// Labels for identifying part number
   static const List<String> _partNoLabels = [
     'PART NO.:',
     'PART NO.',
@@ -20,25 +25,17 @@ class OcrUtil {
     'P/N',
     'P.N.:',
     'P.N.',
-    'P / N',
     'ASSY P/N:',
     'ASSY P/N',
     'ASSY NO:',
     'ASSY NO',
     'PART #:',
     'PART #',
-    'ITEM NO:',
-    'ITEM NO',
     'MATERIAL NO:',
     'MATERIAL NO',
-    'MAT NO:',
-    'MAT NO',
-    'MAT. NO:',
-    'MAT. NO',
-    'SAP NO:',
-    'SAP NO',
   ];
 
+  /// Labels for identifying part description
   static const List<String> _descLabels = [
     'DESCRIPTION.:',
     'DESCRIPTION:',
@@ -53,10 +50,9 @@ class OcrUtil {
     'ITEM NAME',
     'PART NAME:',
     'PART NAME',
-    'ITEM DESC:',
-    'ITEM DESC',
   ];
 
+  /// Labels for identifying aircraft location
   static const List<String> _locLabels = [
     'LOCATION.:',
     'LOCATION:',
@@ -69,33 +65,11 @@ class OcrUtil {
     'BIN/LOC',
     'BIN:',
     'BIN',
-    'REMOVED FROM:',
-    'REMOVED FROM',
-    'INSTALL LOC:',
-    'INSTALL LOC',
     'STATION:',
     'STATION',
   ];
 
-  static const List<String> _qtyLabels = [
-    'QTY.:',
-    'QTY:',
-    'QTY.',
-    'QTY',
-    'QUANTITY:',
-    'QUANTITY',
-    'COUNT:',
-    'COUNT',
-    'QNTY:',
-    'QNTY',
-    'TOTAL QTY:',
-    'TOTAL QTY',
-    'PCS:',
-    'PCS',
-    'EA:',
-    'EA',
-  ];
-
+  /// Labels for serial number
   static const List<String> _serialLabels = [
     'S/NO.:',
     'S/NO:',
@@ -113,115 +87,113 @@ class OcrUtil {
     'SER NO',
   ];
 
-  static const List<String> _allKnownLabels = [
-    ..._partNoLabels,
-    ..._descLabels,
-    ..._locLabels,
-    ..._qtyLabels,
-    ..._serialLabels,
-    'ACCESS PANEL NO.:',
-    'ACCESS PANEL NO:',
-    'ACCESS PANEL NO',
-    'FIN/EQUIPNO:',
-    'FIN/EQUIPNO',
-    'REASON FOR REMOVAL:',
-    'REASON FOR REMOVAL',
-    'INSPECTED:',
-    'INSPECTED',
-    'STAFF NUMBER:',
-    'STAFF NUMBER',
+  /// Labels for aircraft registration
+  static const List<String> _regLabels = [
     'A/C REGN.:',
     'A/C REGN:',
     'A/C REGN',
-    'AIRCRAFT COMPONENT IDENTIFICATION TAG',
-    'ENGINEERING DEPARTMENT',
-    'EMIRATES',
-    'NAME:',
+    'A/C REG.:',
+    'A/C REG:',
+    'A/C REG',
+    'AC REGN:',
+    'AC REGN',
+    'REGN.:',
+    'REGN:',
+    'REGN',
+  ];
+
+  /// Known multi-character labels used to safely delimit values
+  static const List<String> _delimiters = [
+    'S/NO',
+    'S/N',
+    'ACCESS PANEL',
+    'FIN/EQUIPNO',
+    'REASON FOR REMOVAL',
+    'INSPECTED',
+    'STAFF NUMBER',
+    'LOCATION',
+    'DESCRIPTION',
+    'PART NO',
+    'PART NUMBER',
+    'P/N',
+    'A/C REGN',
+    'A/C REG',
     'NAME',
-    'DATE:',
     'DATE',
     'STATUS',
     'SERVICEABLE',
     'UNSERVICEABLE',
-    'SCRAP',
-    'WORK ORDER',
-    'W/O',
-    'BATCH',
   ];
 
+  /// Main tag extraction method
   static Future<Map<String, dynamic>> extractTagFields(String imagePath) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
       final inputImage = InputImage.fromFilePath(imagePath);
       final recognizedText = await recognizer.processImage(inputImage);
 
-      final lines = <_OcrLine>[];
-      final rawCandidateLines = <String>[];
+      final rawText = recognizedText.text;
+      final cleanedFullText = _cleanDottedLines(rawText);
 
+      // Collect all lines across all blocks
+      final rawLines = <String>[];
       for (final block in recognizedText.blocks) {
         for (final line in block.lines) {
-          final cleaned = _cleanRawLine(line.text);
-          if (cleaned.isNotEmpty) {
-            lines.add(_OcrLine(
-              rawText: line.text,
-              cleanedText: cleaned,
-              upperText: cleaned.toUpperCase(),
-              box: line.boundingBox,
-            ));
-            final trimmed = cleaned.trim();
-            if (trimmed.length >= 2 && !rawCandidateLines.contains(trimmed)) {
-              rawCandidateLines.add(trimmed);
-            }
+          final trimmed = _cleanDottedLines(line.text).trim();
+          if (trimmed.isNotEmpty && !rawLines.contains(trimmed)) {
+            rawLines.add(trimmed);
           }
         }
       }
 
-      // Sort lines top-to-bottom, then left-to-right
-      lines.sort((a, b) {
-        final dy = (a.box.top - b.box.top).abs();
-        if (dy < 12) return a.box.left.compareTo(b.box.left);
-        return a.box.top.compareTo(b.box.top);
-      });
+      // Strategy 1: High-precision Regex Extraction over full text
+      String partNo = _extractByRegex(
+        cleanedFullText,
+        r'PART\s*N[O0][\.\:]*\s*(.*?)(?=\s*(?:S\/?N[O0]|ACCESS|FIN|REASON|LOCATION|DESCRIPTION|\n|$))',
+      );
 
-      String partNo = _extractField(lines, _partNoLabels);
-      String description = _extractField(lines, _descLabels);
-      String location = _extractField(lines, _locLabels);
-      String qty = _extractField(lines, _qtyLabels);
-      String serialNo = _extractField(lines, _serialLabels);
+      String description = _extractByRegex(
+        cleanedFullText,
+        r'DESC(?:RIPTION)?[\.\:]*\s*(.*?)(?=\s*(?:LOCATION|PART\s*N[O0]|S\/?N[O0]|ACCESS|FIN|REASON|\n|$))',
+      );
 
-      // Heuristic fallback for Part No if label search missed it
+      String location = _extractByRegex(
+        cleanedFullText,
+        r'LOC(?:ATION)?[\.\:]*\s*(.*?)(?=\s*(?:DESCRIPTION|PART\s*N[O0]|S\/?N[O0]|ACCESS|FIN|REASON|\n|$))',
+      );
+
+      String serialNo = _extractByRegex(
+        cleanedFullText,
+        r'S\/?N[O0][\.\:]*\s*(.*?)(?=\s*(?:ACCESS|FIN|REASON|LOCATION|DESCRIPTION|PART|\n|$))',
+      );
+
+      // Strategy 2: Line-by-line fallback (for split-line layout where label and value are on separate lines)
       if (partNo.isEmpty || _isLikelyLabelOnly(partNo)) {
-        partNo = _findAviationPartNoFallback(lines);
+        partNo = _extractFromLines(rawLines, _partNoLabels);
+      }
+      if (description.isEmpty || _isLikelyLabelOnly(description)) {
+        description = _extractFromLines(rawLines, _descLabels);
+      }
+      if (location.isEmpty || _isLikelyLabelOnly(location)) {
+        location = _extractFromLines(rawLines, _locLabels);
+      }
+      if (serialNo.isEmpty || _isLikelyLabelOnly(serialNo)) {
+        serialNo = _extractFromLines(rawLines, _serialLabels);
       }
 
-      // Snap location to known aircraft lavatory/cabin locations if close match
+      // Strategy 3: Aviation Part Number Pattern Fallback (Emirates UAE series & standard aerospace part numbers)
+      if (partNo.isEmpty || _isLikelyLabelOnly(partNo)) {
+        partNo = _findAviationPartNoFallback(cleanedFullText, rawLines);
+      }
+
+      // Snap location to canonical aircraft locations if matching
       location = _normalizeLocation(location);
 
-      // Normalize Quantity: extract pure digits, handle '15.00 EA' or '1 EA'
-      qty = _normalizeQty(qty);
+      // Normalize Quantity: extract pure digits, handle '15.00 EA' or default '1'
+      final qty = _extractQty(cleanedFullText);
 
-      // Prepare clean candidate chips (removing pure static headers like 'EMIRATES' or 'ENGINEERING DEPARTMENT')
-      final filteredCandidates = <String>[];
-      for (final cand in rawCandidateLines) {
-        final up = cand.toUpperCase().trim();
-        if (up == 'EMIRATES' ||
-            up == 'ENGINEERING DEPARTMENT' ||
-            up.contains('QA/F/0363') ||
-            up.contains('AIRCRAFT COMPONENT IDENTIFICATION') ||
-            up == 'INSPECTED:' ||
-            up == 'NAME:' ||
-            up.length <= 1) {
-          continue;
-        }
-        // If candidate contains label with separator e.g. "DESCRIPTION: FOLDABLE TABLE", also extract the value
-        final stripped = _stripAnyKnownPrefix(cand);
-        if (stripped.isNotEmpty && stripped != cand && !filteredCandidates.contains(stripped)) {
-          filteredCandidates.add(stripped);
-        }
-        if (!filteredCandidates.contains(cand)) {
-          filteredCandidates.add(cand);
-        }
-      }
+      // Build clean candidate chips for 1-tap review
+      final candidates = _buildCandidates(rawLines, partNo, description, location, serialNo);
 
       return {
         'partNo': partNo.toUpperCase().trim(),
@@ -229,8 +201,8 @@ class OcrUtil {
         'location': location.toUpperCase().trim(),
         'tagQty': qty,
         'serialNo': serialNo.toUpperCase().trim(),
-        'rawText': recognizedText.text,
-        'candidates': filteredCandidates,
+        'rawText': rawText,
+        'candidates': candidates,
       };
     } catch (e) {
       return {
@@ -248,129 +220,137 @@ class OcrUtil {
     }
   }
 
-  /// Extracts value using both inline search and spatial bounding-box column lookup
-  static String _extractField(List<_OcrLine> lines, List<String> targetLabels) {
+  /// Extracts field using regex with lookahead boundary
+  static String _extractByRegex(String text, String pattern) {
+    try {
+      final reg = RegExp(pattern, caseSensitive: false);
+      final match = reg.firstMatch(text);
+      if (match != null && match.groupCount >= 1) {
+        final val = match.group(1)?.trim() ?? '';
+        return _cleanFieldValue(val);
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  /// Searches recognized lines for [labels] and returns inline remainder or next line
+  static String _extractFromLines(List<String> lines, List<String> labels) {
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
-      for (final label in targetLabels) {
-        final idx = line.upperText.indexOf(label);
+      final upper = line.toUpperCase();
+
+      for (final label in labels) {
+        final idx = upper.indexOf(label);
         if (idx == -1) continue;
 
-        // 1. Check remainder on the same line
-        final remainder = line.cleanedText.substring(idx + label.length).trim();
-        final inlineVal = _stripLeadingSeparators(remainder);
+        // Check inline remainder on the same line
+        final remainder = line.substring(idx + label.length).trim();
+        final cleanedInline = _cleanFieldValue(_truncateAtDelimiters(remainder));
+        if (cleanedInline.isNotEmpty && !_isLikelyLabelOnly(cleanedInline)) {
+          return cleanedInline;
+        }
 
-        // Check if inline value is present and not immediately interrupted by another label
-        if (inlineVal.isNotEmpty) {
-          final cutVal = _truncateAtNextLabel(inlineVal);
-          if (cutVal.isNotEmpty && !_isLikelyLabelOnly(cutVal)) {
-            return cutVal;
+        // If line only had the label, check the NEXT line
+        if (i + 1 < lines.length) {
+          final nextLine = lines[i + 1].trim();
+          if (!_isLikelyLabelOnly(nextLine) && nextLine.length >= 2) {
+            final cleanedNext = _cleanFieldValue(_truncateAtDelimiters(nextLine));
+            if (cleanedNext.isNotEmpty) {
+              return cleanedNext;
+            }
           }
         }
-
-        // 2. Spatial lookup: Check line directly below this label (e.g. table/box layout)
-        final belowVal = _findLineDirectlyBelow(lines, line, i);
-        if (belowVal.isNotEmpty && !_isLikelyLabelOnly(belowVal)) {
-          return belowVal;
-        }
       }
     }
     return '';
   }
 
-  /// Finds a text line physically positioned directly below [targetLine] within reasonable bounding box bounds
-  static String _findLineDirectlyBelow(List<_OcrLine> allLines, _OcrLine targetLine, int targetIndex) {
-    _OcrLine? bestCandidate;
-    double minDistance = double.infinity;
+  /// Searches text and lines for standard aviation and Emirates part number syntaxes
+  static String _findAviationPartNoFallback(String fullText, List<String> lines) {
+    // 1. Emirates UAE series: e.g. UAE 37-312-1, UAE37-212-1
+    final uaeMatch = RegExp(r'\bUAE\s*\d{2}[-\s]\d{2,4}[-\s]\d+\b', caseSensitive: false).firstMatch(fullText);
+    if (uaeMatch != null) {
+      return uaeMatch.group(0)!.trim();
+    }
 
-    for (int j = 0; j < allLines.length; j++) {
-      if (j == targetIndex) continue;
-      final cand = allLines[j];
+    // 2. Alphanumeric part numbers with letters at end or middle (e.g. 13408A, 1003479A00000, 10-60477-1)
+    final alphaMatch = RegExp(r'\b\d{4,12}[A-Z]\d*\b').firstMatch(fullText);
+    if (alphaMatch != null) {
+      return alphaMatch.group(0)!.trim();
+    }
 
-      // Must be below the target line
-      final verticalGap = cand.box.top - targetLine.box.bottom;
-      if (verticalGap < -4 || verticalGap > (targetLine.box.height * 4.0)) continue;
+    // 3. Aerospace vendor prefix syntax: e.g. HIS03-79784, BACB30NE4-10, NAS1149F0332P
+    final vendorMatch = RegExp(r'\b[A-Z]{2,6}\d{2,10}[A-Z0-9\-]*\b').firstMatch(fullText);
+    if (vendorMatch != null && !_isLikelyLabelOnly(vendorMatch.group(0)!)) {
+      return vendorMatch.group(0)!.trim();
+    }
 
-      // Must have horizontal overlap or close horizontal alignment
-      final horizontalOverlap = (cand.box.left < targetLine.box.right + 40) &&
-                                (cand.box.right > targetLine.box.left - 40);
-      if (!horizontalOverlap) continue;
-
-      // Disqualify if it's another known label
-      if (_isLikelyLabelOnly(cand.upperText)) continue;
-
-      if (verticalGap < minDistance) {
-        minDistance = verticalGap;
-        bestCandidate = cand;
+    // 4. Standard hyphenated aerospace part numbers
+    final hyphenMatch = RegExp(r'\b[A-Z0-9]{2,10}[-\/][A-Z0-9\-\/]{2,15}\b').firstMatch(fullText);
+    if (hyphenMatch != null) {
+      final cand = hyphenMatch.group(0)!.trim();
+      // Avoid dates (e.g. 26-10-26) and A6- registrations
+      if (!RegExp(r'^\d{2}[-\/]\d{2}[-\/]\d{2,4}$').hasMatch(cand) &&
+          !RegExp(r'^A6-[A-Z0-9]{3}$').hasMatch(cand)) {
+        return cand;
       }
     }
 
-    if (bestCandidate != null) {
-      return _stripLeadingSeparators(bestCandidate.cleanedText);
-    }
     return '';
   }
 
-  /// Truncates string if another label begins on the same line (e.g. "13408A S/NO: 9000081255")
-  static String _truncateAtNextLabel(String s) {
+  /// Truncates string when another major label appears (without breaking on short subwords like 'EA')
+  static String _truncateAtDelimiters(String s) {
     final upper = s.toUpperCase();
     int earliest = s.length;
-    for (final l in _allKnownLabels) {
-      final pos = upper.indexOf(l);
-      if (pos > 0 && pos < earliest) {
-        earliest = pos;
+
+    for (final delim in _delimiters) {
+      // Must match at word boundary or with colon/dot
+      final pattern = RegExp('\\b' + RegExp.escape(delim) + r'[:\.\s]', caseSensitive: false);
+      final match = pattern.firstMatch(upper);
+      if (match != null && match.start > 0 && match.start < earliest) {
+        earliest = match.start;
       }
     }
+
     return s.substring(0, earliest).trim();
   }
 
+  /// Cleans repeated dots, underscores, dashes, and bullet marks common on pre-printed forms
+  static String _cleanDottedLines(String s) {
+    // Normalizes patterns like "....", ". . . .", "______", "-----"
+    var res = s.replaceAll(RegExp(r'(?:[\.\-_·•\s]{2,}\.|\.{2,}|_{2,}|-{2,})'), ' ');
+    return res.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  }
+
+  /// Cleans field values by stripping leading/trailing punctuation and quotation marks
+  static String _cleanFieldValue(String s) {
+    var val = s.trim();
+    // Strip leading colons, dots, dashes, hash signs
+    val = val.replaceFirst(RegExp(r'^[:.\-=\s#_]+'), '').trim();
+    // Strip trailing colons or stray dashes
+    val = val.replaceFirst(RegExp(r'[:.\-=\s#_]+$'), '').trim();
+    return val;
+  }
+
+  /// Checks if a string is solely a pre-printed form label
   static bool _isLikelyLabelOnly(String s) {
     final upper = s.trim().toUpperCase();
-    for (final l in _allKnownLabels) {
-      if (upper == l ||
-          upper == '$l:' ||
-          upper == '$l -' ||
-          upper == '$l.' ||
-          upper == '$l.:') {
+    if (upper.isEmpty || upper == '-' || upper == 'N/A' || upper == 'NONE') return true;
+
+    for (final d in _delimiters) {
+      if (upper == d ||
+          upper == '$d:' ||
+          upper == '$d.' ||
+          upper == '$d.:' ||
+          upper == '$d -') {
         return true;
       }
     }
     return false;
   }
 
-  /// Strip any recognized label prefix from candidate lines (e.g. "DESCRIPTION: BUSTLE STOWAGE" -> "BUSTLE STOWAGE")
-  static String _stripAnyKnownPrefix(String s) {
-    final upper = s.toUpperCase().trim();
-    for (final l in _allKnownLabels) {
-      if (upper.startsWith(l)) {
-        final remainder = s.trim().substring(l.length).trim();
-        return _stripLeadingSeparators(remainder);
-      }
-    }
-    return s.trim();
-  }
-
-  /// Searches lines for standard aviation part number patterns (alphanumeric with dashes/slashes)
-  static String _findAviationPartNoFallback(List<_OcrLine> lines) {
-    // Standard aerospace part syntax: e.g. BACB30NE4-10, D28271000-001, NAS1149F0332P, 10-60477-1, UAE37-212-1
-    final aviationRegex = RegExp(r'\b[A-Z0-9]{2,10}[-\/][A-Z0-9\-\/]{2,15}\b');
-    for (final line in lines) {
-      if (_isLikelyLabelOnly(line.upperText)) continue;
-      // Skip date lines
-      if (RegExp(r'\b\d{2}[-\/][A-Z]{3}[-\/]\d{2,4}\b').hasMatch(line.upperText)) continue;
-      if (RegExp(r'\b\d{2,4}[-\/]\d{2}[-\/]\d{2,4}\b').hasMatch(line.upperText)) continue;
-      // Skip aircraft regs like A6-XXX
-      if (RegExp(r'\bA6-[A-Z0-9]{3}\b').hasMatch(line.upperText)) continue;
-
-      final match = aviationRegex.firstMatch(line.upperText);
-      if (match != null) {
-        return match.group(0)!;
-      }
-    }
-    return '';
-  }
-
-  /// Snaps extracted location to canonical locations (e.g. LAV 1MC)
+  /// Snaps extracted location to canonical list (e.g. FWD BAR LH LOWER, UR1 MD, LAV 1MC)
   static String _normalizeLocation(String raw) {
     if (raw.isEmpty) return '';
     final cleaned = raw.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
@@ -380,42 +360,66 @@ class OcrUtil {
         return loc;
       }
     }
-    return _stripLeadingSeparators(raw);
+    return _cleanFieldValue(raw);
   }
 
-  static String _normalizeQty(String raw) {
-    if (raw.isEmpty) return '1';
-    // Extracts numeric value even if followed by EA, PCS, NOS, e.g. "15.00 EA" -> "15"
-    final decimalMatch = RegExp(r'(\d+)(?:\.\d+)?').firstMatch(raw);
-    if (decimalMatch != null && decimalMatch.group(1) != null) {
-      return decimalMatch.group(1)!;
+  /// Extracts quantity or defaults to '1'
+  static String _extractQty(String text) {
+    final match = RegExp(r'\b(?:QTY|QUANTITY)[\.\:]*\s*(\d+)', caseSensitive: false).firstMatch(text);
+    if (match != null && match.group(1) != null) {
+      return match.group(1)!;
     }
     return '1';
   }
 
-  static String _cleanRawLine(String line) {
-    // Strips repeated dots, dashes, underscores common on pre-printed form guide lines
-    var s = line.replaceAll(RegExp(r'\.{2,}'), ' ').trim();
-    s = s.replaceAll(RegExp(r'_{2,}'), ' ').trim();
-    s = s.replaceAll(RegExp(r'-{3,}'), ' ').trim();
-    return s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  /// Builds candidate chips for the 1-tap review dialog
+  static List<String> _buildCandidates(
+    List<String> lines,
+    String partNo,
+    String description,
+    String location,
+    String serialNo,
+  ) {
+    final list = <String>[];
+
+    void addCandidate(String s) {
+      final t = s.trim();
+      if (t.length >= 2 && !list.contains(t) && !_isBoilerplate(t)) {
+        list.add(t);
+      }
+    }
+
+    if (partNo.isNotEmpty) addCandidate(partNo);
+    if (description.isNotEmpty) addCandidate(description);
+    if (location.isNotEmpty) addCandidate(location);
+    if (serialNo.isNotEmpty && serialNo != '-') addCandidate(serialNo);
+
+    for (final line in lines) {
+      final trimmed = _cleanFieldValue(_truncateAtDelimiters(line));
+      if (trimmed.isNotEmpty) {
+        addCandidate(trimmed);
+      }
+    }
+
+    return list;
   }
 
-  static String _stripLeadingSeparators(String s) {
-    return s.replaceFirst(RegExp(r'^[:.\-=\s#_]+'), '').trim();
+  /// Checks if string is pure boilerplate header
+  static bool _isBoilerplate(String s) {
+    final up = s.toUpperCase().trim();
+    return up == 'EMIRATES' ||
+        up == 'ENGINEERING DEPARTMENT' ||
+        up.contains('QA/F/0363') ||
+        up.contains('AIRCRAFT COMPONENT IDENTIFICATION') ||
+        up.contains('LAE STAMP') ||
+        up.contains('INSPECTION PERFORMED') ||
+        up == 'INSPECTED:' ||
+        up == 'INSPECTED' ||
+        up == 'ACCESS PANEL NO' ||
+        up == 'FIN/EQUIPNO' ||
+        up == 'REV. 03' ||
+        up == 'REV 03' ||
+        up == '-' ||
+        _isLikelyLabelOnly(up);
   }
-}
-
-class _OcrLine {
-  final String rawText;
-  final String cleanedText;
-  final String upperText;
-  final Rect box;
-
-  _OcrLine({
-    required this.rawText,
-    required this.cleanedText,
-    required this.upperText,
-    required this.box,
-  });
 }
