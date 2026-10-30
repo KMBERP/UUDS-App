@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   Map<String, int> _stats = {
     'aircraft': 0,
     'totalPhotos': 0,
@@ -33,27 +33,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   DateTime? _lastBackPress;
 
-  // Living hangar background motion and color-filling transition controllers
-  late final AnimationController _motionController;
-  late final AnimationController _colorController;
-  late final Animation<double> _colorAnimation;
-
   @override
   void initState() {
     super.initState();
-
-    _motionController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 16),
-    )..repeat(reverse: true);
-
-    _colorController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    );
-    _colorAnimation = CurvedAnimation(parent: _colorController, curve: Curves.easeOutCubic);
-    _colorController.forward();
-
     _loadStats();
     if (Session.currentEmployee != null) {
       // Switching back to the Home tab: the inspector is still "logged in"
@@ -102,24 +84,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _motionController.dispose();
-    _colorController.dispose();
     _idController.dispose();
     super.dispose();
-  }
-
-  /// Interpolates from cool grayscale (t=0) to full rich saturated color (t=1)
-  List<double> _buildColorMatrix(double t) {
-    final inv = 1.0 - t;
-    final lr = 0.2126 * inv;
-    final lg = 0.7152 * inv;
-    final lb = 0.0722 * inv;
-    return [
-      lr + t, lg,     lb,     0, 0,
-      lr,     lg + t, lb,     0, 0,
-      lr,     lg,     lb + t, 0, 0,
-      0,      0,      0,      1, 0,
-    ];
   }
 
   Future<void> _loadStats() async {
@@ -233,25 +199,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Animated DXB Stores & Emirates hangar scene:
-          // Subtle breathing zoom (1.0 to 1.04) and smooth, rich color-filling transition
-          AnimatedBuilder(
-            animation: Listenable.merge([_motionController, _colorAnimation]),
-            builder: (context, child) {
-              final scale = 1.0 + (_motionController.value * 0.04);
-              final t = _colorAnimation.value;
-              return Transform.scale(
-                scale: scale,
-                child: ColorFiltered(
-                  colorFilter: ColorFilter.matrix(_buildColorMatrix(t)),
-                  child: Image.asset(
-                    'assets/branding/home_background.jpg',
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                  ),
-                ),
-              );
-            },
+          // New custom Emirates DXB Workshop background
+          Image.asset(
+            'assets/branding/home_background.jpg',
+            fit: BoxFit.cover,
+            alignment: Alignment.center,
           ),
           // Balanced gradient overlay protecting text readability while showcasing vibrant hangar colors
           Container(
