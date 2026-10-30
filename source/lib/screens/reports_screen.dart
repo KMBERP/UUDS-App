@@ -39,6 +39,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // Auto-clean any legacy OCR artifacts from existing tags
+    await DBHelper.instance.cleanExistingTagOcrData();
     String? from, to;
     if (_range != null) {
       from = DateTime(_range!.start.year, _range!.start.month, _range!.start.day).toIso8601String();

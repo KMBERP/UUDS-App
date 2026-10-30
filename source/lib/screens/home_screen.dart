@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/build_info.dart';
 import '../utils/page_transitions.dart';
 import '../utils/session.dart';
 import '../utils/theme.dart';
@@ -260,7 +261,22 @@ class _HomeScreenState extends State<HomeScreen> {
                       shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24, width: 0.8),
+                      ),
+                      child: const Text(
+                        'Build: $kBuildId',
+                        style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   _statsCard(),
                   const SizedBox(height: 16),
                   _inspectorCard(),

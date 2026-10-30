@@ -48,7 +48,7 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE employees(
@@ -207,6 +207,48 @@ class DBHelper {
         if (oldVersion < 8) {
           // Version 8: Add dedicated isTag column to separate part photos (0) from part tags (1)
           await db.execute("ALTER TABLE photos ADD COLUMN isTag INTEGER DEFAULT 0");
+        }
+        if (oldVersion < 9) {
+          // Version 9: Clean legacy OCR artifacts from existing photo tags
+          final rows = await db.query('photos', where: 'isTag = 1 OR tagPartNo != ""');
+          for (final row in rows) {
+            final id = row['id'] as int?;
+            if (id == null) continue;
+            var pNo = (row['tagPartNo'] as String? ?? '').trim();
+            var desc = (row['tagDescription'] as String? ?? '').trim();
+
+            pNo = pNo.replaceAll(
+              RegExp(r'[,.\s\-]+(?:S[\/\s]*I?N[O0]|SOALNO|S[\.,]?NO|SERIAL)(?:[\s\:\.\-].*)?$', caseSensitive: false),
+              '',
+            ).trim();
+            pNo = pNo.replaceAll(RegExp(r'^[,.\s\-#:]+|[,.\s\-#:]+$'), '').trim();
+
+            if (desc.isNotEmpty) {
+              final upper = desc.toUpperCase();
+              if (upper.contains('STOW') || upper.contains('3TOL') || upper.contains('RUST') || upper.contains('BUST')) {
+                desc = 'BUSTLE STOWAGE';
+              } else if (upper.contains('FOLD') || upper.contains('TABL')) {
+                desc = 'FOLDABLE TABLE';
+              } else if (upper.contains('SLID') || upper.contains('SLDG')) {
+                desc = 'SLIDING DOOR';
+              } else if (upper.contains('DOOR') || upper.contains('D.QQ.R') || upper.contains('QQQ')) {
+                desc = 'DOOR';
+              } else if (upper.endsWith('ANEL') || upper.contains('PANEL') || upper.contains('PANL')) {
+                desc = 'ACCESS PANEL';
+              } else if (upper.contains('SEAT')) {
+                desc = 'PASSENGER SEAT';
+              } else if (upper.contains('BAR') || upper.contains('FWD')) {
+                desc = 'FORWARD BAR';
+              } else if (upper.contains('Æ') || upper.startsWith('AC REGN') || upper.startsWith('A6-')) {
+                desc = '';
+              }
+            }
+
+            await db.update('photos', {
+              'tagPartNo': pNo.toUpperCase(),
+              'tagDescription': desc.toUpperCase(),
+            }, where: 'id = ?', whereArgs: [id]);
+          }
         }
       },
     );
@@ -461,6 +503,58 @@ class DBHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Cleans legacy OCR misreads and trailing S/NO suffixes across existing tags
+  Future<int> cleanExistingTagOcrData() async {
+    final db = await database;
+    final rows = await db.query('photos', where: 'isTag = 1 OR tagPartNo != ""');
+    int cleanedCount = 0;
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      if (id == null) continue;
+      var pNo = (row['tagPartNo'] as String? ?? '').trim();
+      var desc = (row['tagDescription'] as String? ?? '').trim();
+
+      final origPNo = pNo;
+      final origDesc = desc;
+
+      pNo = pNo.replaceAll(
+        RegExp(r'[,.\s\-]+(?:S[\/\s]*I?N[O0]|SOALNO|S[\.,]?NO|SERIAL)(?:[\s\:\.\-].*)?$', caseSensitive: false),
+        '',
+      ).trim();
+      pNo = pNo.replaceAll(RegExp(r'^[,.\s\-#:]+|[,.\s\-#:]+$'), '').trim();
+
+      if (desc.isNotEmpty) {
+        final upper = desc.toUpperCase();
+        if (upper.contains('STOW') || upper.contains('3TOL') || upper.contains('RUST') || upper.contains('BUST')) {
+          desc = 'BUSTLE STOWAGE';
+        } else if (upper.contains('FOLD') || upper.contains('TABL')) {
+          desc = 'FOLDABLE TABLE';
+        } else if (upper.contains('SLID') || upper.contains('SLDG')) {
+          desc = 'SLIDING DOOR';
+        } else if (upper.contains('DOOR') || upper.contains('D.QQ.R') || upper.contains('QQQ')) {
+          desc = 'DOOR';
+        } else if (upper.endsWith('ANEL') || upper.contains('PANEL') || upper.contains('PANL')) {
+          desc = 'ACCESS PANEL';
+        } else if (upper.contains('SEAT')) {
+          desc = 'PASSENGER SEAT';
+        } else if (upper.contains('BAR') || upper.contains('FWD')) {
+          desc = 'FORWARD BAR';
+        } else if (upper.contains('Æ') || upper.startsWith('AC REGN') || upper.startsWith('A6-')) {
+          desc = '';
+        }
+      }
+
+      if (pNo != origPNo || desc != origDesc) {
+        await db.update('photos', {
+          'tagPartNo': pNo.toUpperCase(),
+          'tagDescription': desc.toUpperCase(),
+        }, where: 'id = ?', whereArgs: [id]);
+        cleanedCount++;
+      }
+    }
+    return cleanedCount;
   }
 
   // ---------- Stats (for Home dashboard) ----------

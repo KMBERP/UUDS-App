@@ -40,6 +40,7 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
   }
 
   Future<void> _loadTags() async {
+    await DBHelper.instance.cleanExistingTagOcrData();
     final photos = await DBHelper.instance.getPhotos();
     setState(() {
       _allPhotos = photos.where((p) => p.isTag == 1 || p.tagPartNo.isNotEmpty).toList();
