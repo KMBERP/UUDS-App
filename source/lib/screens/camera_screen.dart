@@ -73,7 +73,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _hardwareKeysChannel.setMethodCallHandler((call) async {
       if (call.method == 'cameraButtonPressed') {
         if (!_capturing && mounted) {
-          _captureAndSave(isTag: _tagGuideVisible);
+          _captureAndSave();
         }
       }
     });
@@ -195,7 +195,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Future<void> _captureAndSave({bool isTag = false}) async {
+  Future<void> _captureAndSave() async {
     if (_controller == null || !_controller!.value.isInitialized || _capturing) return;
     setState(() => _capturing = true);
     HapticFeedback.mediumImpact();
@@ -203,12 +203,12 @@ class _CameraScreenState extends State<CameraScreen> {
       // Direct high-speed shutter snapshot without blocking auto-focus locks
       final xfile = await _controller!.takePicture();
 
-      final savedPhoto = await _saveSourceFile(xfile.path, isTag: isTag);
+      final savedPhoto = await _saveSourceFile(xfile.path);
       if (savedPhoto == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save photo.')));
-      } else if (savedPhoto != null && isTag) {
-        // Automatically prompt tag OCR scanning for tag photos
-        await _scanTag(savedPhoto);
+      } else if (savedPhoto != null) {
+        // Automatically understand if photo is an aircraft part tag in background
+        _autoDetectTagInBackground(savedPhoto);
       }
     } catch (e) {
       if (mounted) {
@@ -217,6 +217,90 @@ class _CameraScreenState extends State<CameraScreen> {
     } finally {
       if (mounted) setState(() => _capturing = false);
     }
+  }
+
+  /// Background tag detector: scans taken photo for aviation & Emirates tags
+  /// and automatically routes them to the Part Tags folder without interrupting the camera.
+  Future<void> _autoDetectTagInBackground(InspectionPhoto photo) async {
+    try {
+      final extracted = await OcrUtil.extractTagFields(photo.filePath);
+      final raw = (extracted['rawText'] ?? '').toString().toUpperCase();
+
+      // Automatically identify Emirates QA/F/0363 & airline repair tags
+      final bool isTag = raw.contains('ENGINEERING DEPARTMENT') ||
+                         raw.contains('AIRCRAFT COMPONENT') ||
+                         raw.contains('IDENTIFICATION TAG') ||
+                         raw.contains('QA/F/0363') ||
+                         raw.contains('PART NO') ||
+                         raw.contains('REASON FOR REMOVAL') ||
+                         raw.contains('SERVICEABLE') ||
+                         raw.contains('UNSERVICEABLE') ||
+                         (raw.contains('P/N') && raw.contains('S/N'));
+
+      if (isTag && photo.id != null) {
+        final pNo = (extracted['partNo'] ?? '').toString();
+        final desc = (extracted['description'] ?? '').toString();
+        final loc = (extracted['location'] ?? '').toString();
+        final qty = (extracted['tagQty'] ?? '1').toString();
+
+        await DBHelper.instance.markPhotoAsTag(
+          photo.id!,
+          partNo: pNo,
+          description: desc,
+          location: loc,
+          qty: qty,
+        );
+
+        // Mirror copy to dedicated Part_Tags storage folder
+        try {
+          final fileName = File(photo.filePath).uri.pathSegments.last;
+          await StoragePaths.publishToGallery(
+            sourcePath: photo.filePath,
+            aircraftReg: widget.aircraft.regNo,
+            inspectionTypeLabel: widget.type.label,
+            location: widget.partLocation.name,
+            fileName: fileName,
+            isTag: true,
+          );
+        } catch (_) {}
+
+        if (mounted) {
+          setState(() {
+            final idx = _sessionPhotos.indexWhere((p) => p.id == photo.id);
+            if (idx != -1) {
+              _sessionPhotos[idx] = InspectionPhoto(
+                id: photo.id,
+                employeeName: photo.employeeName,
+                aircraftReg: photo.aircraftReg,
+                inspectionType: photo.inspectionType,
+                partLocation: photo.partLocation,
+                filePath: photo.filePath,
+                timestamp: photo.timestamp,
+                remarks: photo.remarks,
+                tagPartNo: pNo,
+                tagDescription: desc,
+                tagLocation: loc,
+                tagQty: qty,
+                isTag: 1,
+              );
+            }
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.qr_code_scanner, color: Colors.amberAccent, size: 18),
+                  SizedBox(width: 8),
+                  Text('Part Tag auto-detected & added to Tag Folder'),
+                ],
+              ),
+              duration: Duration(seconds: 2),
+              backgroundColor: Color(0xFFE65100),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _importFromGallery({bool isTag = false}) async {
@@ -698,64 +782,27 @@ class _CameraScreenState extends State<CameraScreen> {
                             ),
                           ),
 
-                          // DUAL CAPTURE BUTTONS: PART PHOTO & TAG PHOTO
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // 1. Part Photo Shutter Button
-                              GestureDetector(
-                                onTap: () => _captureAndSave(isTag: false),
-                                child: Container(
-                                  width: 74,
-                                  height: 74,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white,
-                                    border: Border.all(color: _capturing ? Colors.grey : Colors.blue.shade100, width: 4),
-                                    boxShadow: const [
-                                      BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
-                                    ],
-                                  ),
-                                  child: _capturing
-                                      ? const Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator(strokeWidth: 3))
-                                      : const Icon(Icons.camera_alt, size: 34, color: Color(0xFF0B3D91)),
+                          // Single Shutter Button (Auto-detects tags in background)
+                          GestureDetector(
+                            onTap: _captureAndSave,
+                            child: Container(
+                              width: 76,
+                              height: 76,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: _capturing ? Colors.grey : const Color(0xFF0B3D91),
+                                  width: 4,
                                 ),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
+                                ],
                               ),
-
-                              const SizedBox(width: 14),
-
-                              // 2. Dedicated Part Tag Capture Button (Saves to Part_Tags folder)
-                              GestureDetector(
-                                onTap: () => _captureAndSave(isTag: true),
-                                child: Container(
-                                  width: 74,
-                                  height: 74,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0xFFE65100),
-                                    border: Border.all(color: Colors.amberAccent, width: 3),
-                                    boxShadow: const [
-                                      BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4)),
-                                    ],
-                                  ),
-                                  child: const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.qr_code_scanner, size: 28, color: Colors.white),
-                                      Text(
-                                        'TAG',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 10,
-                                          letterSpacing: 1,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                              child: _capturing
+                                  ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(strokeWidth: 3))
+                                  : const Icon(Icons.camera_alt, size: 36, color: Color(0xFF0B3D91)),
+                            ),
                           ),
 
                           // Finish Session Button

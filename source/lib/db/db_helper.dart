@@ -441,6 +441,28 @@ class DBHelper {
     );
   }
 
+  Future<void> markPhotoAsTag(
+    int id, {
+    String partNo = '',
+    String description = '',
+    String location = '',
+    String qty = '1',
+  }) async {
+    final db = await database;
+    await db.update(
+      'photos',
+      {
+        'isTag': 1,
+        'tagPartNo': partNo,
+        'tagDescription': description,
+        'tagLocation': location,
+        'tagQty': qty,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   // ---------- Stats (for Home dashboard) ----------
   Future<Map<String, int>> getStats() async {
     final db = await database;

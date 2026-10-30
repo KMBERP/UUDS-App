@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
@@ -9,9 +10,13 @@ import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import 'photo_viewer_screen.dart';
 
-/// Dedicated screen for the Part Tags Repository / Folder.
-/// Displays all part tags across all aircraft, with search by Part Number,
-/// Description, Location, and Aircraft, plus 1-tap OCR re-scanning and sharing.
+/// Dedicated screen for the Part Tags Folder.
+/// Shows tag photos with:
+/// - Tag Picture thumbnail (tap to view full size)
+/// - Date & Time
+/// - User ID (UUDS-XXXX)
+/// - Selected Folder Path on device
+/// - 1-Click OCR verification and copy
 class AllPartTagsScreen extends StatefulWidget {
   final Map<String, String> idByName;
 
@@ -53,7 +58,7 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
           p.tagLocation.toUpperCase().contains(query) ||
           p.partLocation.toUpperCase().contains(query) ||
           p.aircraftReg.toUpperCase().contains(query) ||
-          p.remarks.toUpperCase().contains(query);
+          p.filePath.toUpperCase().contains(query);
     }).toList();
   }
 
@@ -62,17 +67,26 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
     return ['ALL', ...regs];
   }
 
-  String _formatTimestamp(String iso) {
+  String _formatDate(String iso) {
     try {
       final dt = DateTime.parse(iso).toLocal();
       final dd = dt.day.toString().padLeft(2, '0');
       final mm = dt.month.toString().padLeft(2, '0');
       final yy = dt.year.toString();
+      return '$dd/$mm/$yy';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _formatTime(String iso) {
+    try {
+      final dt = DateTime.parse(iso).toLocal();
       final hour24 = dt.hour;
       final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
       final min = dt.minute.toString().padLeft(2, '0');
       final ampm = hour24 >= 12 ? 'PM' : 'AM';
-      return '$dd/$mm/$yy $hour12:$min $ampm';
+      return '$hour12:$min $ampm';
     } catch (_) {
       return '';
     }
@@ -82,6 +96,16 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
     final id = widget.idByName[p.employeeName];
     if (id != null && id.isNotEmpty) return 'UUDS-$id';
     return p.employeeName;
+  }
+
+  String _displayFolderPath(InspectionPhoto p) {
+    // Shows the exact storage directory path on device
+    try {
+      final file = File(p.filePath);
+      return file.parent.path;
+    } catch (_) {
+      return 'Pictures/UUDS/Part_Tags/${p.aircraftReg}/${p.inspectionType}/${p.partLocation}';
+    }
   }
 
   Future<void> _shareTag(InspectionPhoto p) async {
@@ -94,8 +118,9 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
         'Description: ${p.tagDescription.isNotEmpty ? p.tagDescription : "N/A"}\n'
         'Location: ${p.tagLocation.isNotEmpty ? p.tagLocation : p.partLocation}\n'
         'Aircraft: ${p.aircraftReg}\n'
-        'Qty: ${p.tagQty.isNotEmpty ? p.tagQty : "1"}\n'
-        'Date: ${_formatTimestamp(p.timestamp)}';
+        'User: ${_idLabel(p)}\n'
+        'Folder: ${_displayFolderPath(p)}\n'
+        'Date: ${_formatDate(p.timestamp)} ${_formatTime(p.timestamp)}';
     await Share.shareXFiles([XFile(p.filePath)], text: text);
   }
 
@@ -103,8 +128,8 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Part Tag Photo?'),
-        content: Text('Are you sure you want to delete this part tag (${p.tagPartNo.isNotEmpty ? p.tagPartNo : "tag"})?'),
+        title: const Text('Delete Part Tag?'),
+        content: Text('Are you sure you want to delete this part tag from ${_idLabel(p)}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
@@ -123,6 +148,172 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
       } catch (_) {}
       await _loadTags();
     }
+  }
+
+  void _showVerifyOcrSheet(InspectionPhoto photo) {
+    final hasPartNo = photo.tagPartNo.trim().isNotEmpty;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE65100),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Tag OCR Verification',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kHeaderBlue),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(height: 20),
+
+              // Part Number with 1-tap Copy
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('PART NUMBER (P/N)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91))),
+                          const SizedBox(height: 2),
+                          Text(
+                            hasPartNo ? photo.tagPartNo : 'NOT DETECTED (TAP EDIT TO ENTER)',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: hasPartNo ? const Color(0xFF0B3D91) : Colors.red.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (hasPartNo)
+                      FilledButton.tonalIcon(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: photo.tagPartNo));
+                          HapticFeedback.selectionClick();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Copied P/N: ${photo.tagPartNo} to clipboard')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy'),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Description & Location
+              if (photo.tagDescription.isNotEmpty) ...[
+                _ocrFieldTile('Description', photo.tagDescription, Icons.description),
+                const SizedBox(height: 8),
+              ],
+              _ocrFieldTile('Tag Location', photo.tagLocation.isNotEmpty ? photo.tagLocation : photo.partLocation, Icons.place),
+              const SizedBox(height: 8),
+              _ocrFieldTile('Quantity', photo.tagQty.isNotEmpty ? photo.tagQty : '1', Icons.numbers),
+              const SizedBox(height: 8),
+              _ocrFieldTile('Selected Folder Path', _displayFolderPath(photo), Icons.folder_open),
+
+              const SizedBox(height: 16),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFFE65100)),
+                      ),
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        final updated = await showTagScanDialog(context, photo);
+                        if (updated) _loadTags();
+                      },
+                      icon: const Icon(Icons.edit, color: Color(0xFFE65100), size: 18),
+                      label: const Text('Edit / Correct OCR', style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B3D91),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.check, size: 18),
+                    label: const Text('Done'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _ocrFieldTile(String label, String value, IconData icon) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.black54),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 1),
+                Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -164,7 +355,7 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
                 inputFormatters: [upperCaseInputFormatter],
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search, color: Color(0xFF0B3D91)),
-                  hintText: 'Search Part No, Desc, Location, Aircraft...',
+                  hintText: 'Search Part No, Aircraft, Location...',
                   hintStyle: const TextStyle(fontSize: 13),
                   filled: true,
                   fillColor: const Color(0xFFF0F4F8),
@@ -224,7 +415,7 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
                               ),
                               const SizedBox(height: 6),
                               const Text(
-                                'Use the orange [TAG] button in the Camera to snap airline tags.',
+                                'Tags are automatically detected and filed here when you take photos.',
                                 style: TextStyle(color: Colors.black45, fontSize: 12),
                               ),
                             ],
@@ -235,7 +426,7 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
                           itemCount: filtered.length,
                           itemBuilder: (ctx, i) {
                             final photo = filtered[i];
-                            return _buildTagCard(photo, filtered, i);
+                            return _buildCleanTagCard(photo, filtered, i);
                           },
                         ),
             ),
@@ -245,8 +436,13 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
     );
   }
 
-  Widget _buildTagCard(InspectionPhoto photo, List<InspectionPhoto> list, int index) {
-    final hasPartNo = photo.tagPartNo.trim().isNotEmpty;
+  /// Clean Tag Card displaying:
+  /// - Picture thumbnail
+  /// - Date & Time
+  /// - User ID
+  /// - Selected Folder Path
+  /// - 1-Click OCR verification button
+  Widget _buildCleanTagCard(InspectionPhoto photo, List<InspectionPhoto> list, int index) {
     final file = File(photo.filePath);
 
     return Card(
@@ -254,218 +450,169 @@ class _AllPartTagsScreenState extends State<AllPartTagsScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: hasPartNo ? Colors.amber.shade400 : Colors.grey.shade300, width: 1.2),
+        side: BorderSide(color: Colors.amber.shade400, width: 1.2),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          Navigator.of(context)
-              .push(fadeSlideRoute(PhotoViewerScreen(
-                photos: list,
-                initialIndex: index,
-                idByName: widget.idByName,
-              )))
-              .then((_) => _loadTags());
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Photo Thumbnail with TAG badge
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: file.existsSync()
-                        ? Image.file(
-                            file,
-                            width: 80,
-                            height: 80,
-                            fit: BoxFit.cover,
-                            cacheWidth: 200,
-                          )
-                        : Container(
-                            width: 80,
-                            height: 80,
-                            color: Colors.grey.shade300,
-                            child: const Icon(Icons.broken_image, color: Colors.grey),
-                          ),
-                  ),
-                  Positioned(
-                    top: 4,
-                    left: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE65100),
-                        borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Tag Picture Thumbnail (Tap to open full photo viewer)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context)
+                        .push(fadeSlideRoute(PhotoViewerScreen(
+                          photos: list,
+                          initialIndex: index,
+                          idByName: widget.idByName,
+                        )))
+                        .then((_) => _loadTags());
+                  },
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: file.existsSync()
+                            ? Image.file(
+                                file,
+                                width: 90,
+                                height: 90,
+                                fit: BoxFit.cover,
+                                cacheWidth: 240,
+                              )
+                            : Container(
+                                width: 90,
+                                height: 90,
+                                color: Colors.grey.shade300,
+                                child: const Icon(Icons.broken_image, color: Colors.grey),
+                              ),
                       ),
-                      child: const Text(
-                        'TAG',
-                        style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-
-              // Metadata Column
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Aircraft Reg & Qty Badges
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      Positioned(
+                        top: 4,
+                        left: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0B3D91).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
+                            color: const Color(0xFFE65100),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(
-                            photo.aircraftReg,
-                            style: const TextStyle(
-                              color: Color(0xFF0B3D91),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
+                          child: const Text(
+                            'TAG',
+                            style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            photo.inspectionType,
-                            style: const TextStyle(color: Colors.black87, fontSize: 10.5, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        const Spacer(),
-                        if (photo.tagQty.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade100,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.amber.shade400),
-                            ),
-                            child: Text(
-                              'QTY: ${photo.tagQty}',
-                              style: TextStyle(color: Colors.amber.shade900, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-
-                    // Part Number
-                    Text(
-                      hasPartNo ? photo.tagPartNo : 'PART NO NOT SCANNED',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        color: hasPartNo ? const Color(0xFF0B3D91) : Colors.red.shade700,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-
-                    // Description
-                    if (photo.tagDescription.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          photo.tagDescription,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
                         ),
                       ),
-
-                    const SizedBox(height: 4),
-
-                    // Location on Tag / Part Location
-                    Row(
-                      children: [
-                        const Icon(Icons.place, size: 13, color: Colors.black45),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            photo.tagLocation.isNotEmpty
-                                ? 'Tag Loc: ${photo.tagLocation}'
-                                : 'Loc: ${photo.partLocation}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11, color: Colors.black54),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    // Timestamp & Inspector
-                    Row(
-                      children: [
-                        Text(
-                          _formatTimestamp(photo.timestamp),
-                          style: const TextStyle(fontSize: 10, color: Colors.black45),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '· ${_idLabel(photo)}',
-                          style: const TextStyle(fontSize: 10, color: Colors.black54, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Action buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            minimumSize: const Size(0, 30),
-                            side: BorderSide(color: Colors.amber.shade700),
-                          ),
-                          onPressed: () async {
-                            final updated = await showTagScanDialog(context, photo);
-                            if (updated) _loadTags();
-                          },
-                          icon: Icon(Icons.qr_code_scanner, size: 14, color: Colors.amber.shade900),
-                          label: Text(
-                            hasPartNo ? 'Edit OCR' : 'Scan OCR',
-                            style: TextStyle(fontSize: 11, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        IconButton(
-                          icon: const Icon(Icons.share, size: 18, color: Color(0xFF0B3D91)),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Share Tag',
-                          onPressed: () => _shareTag(photo),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Delete Tag',
-                          onPressed: () => _deleteTag(photo),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 12),
+
+                // Details: Date, Time, User ID, Folder Path
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Date & Time
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today, size: 13, color: Colors.black54),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDate(photo.timestamp),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.access_time, size: 13, color: Colors.black54),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatTime(photo.timestamp),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // User ID
+                      Row(
+                        children: [
+                          const Icon(Icons.person, size: 14, color: Color(0xFF0B3D91)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'User ID: ${_idLabel(photo)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                              color: Color(0xFF0B3D91),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Selected Folder Path
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.folder_open, size: 13, color: Color(0xFFE65100)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _displayFolderPath(photo),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10.5, color: Colors.black54, fontFamily: 'monospace'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+
+            // Bottom Actions: [ 🔍 Verify OCR Data ], [ Share ], [ Delete ]
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.amber.shade100,
+                      foregroundColor: Colors.brown.shade900,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => _showVerifyOcrSheet(photo),
+                    icon: const Icon(Icons.document_scanner, size: 16),
+                    label: Text(
+                      photo.tagPartNo.isNotEmpty ? 'OCR: ${photo.tagPartNo}' : 'Verify Tag OCR',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.share, size: 20, color: Color(0xFF0B3D91)),
+                  tooltip: 'Share Tag',
+                  onPressed: () => _shareTag(photo),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                  tooltip: 'Delete Tag',
+                  onPressed: () => _deleteTag(photo),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

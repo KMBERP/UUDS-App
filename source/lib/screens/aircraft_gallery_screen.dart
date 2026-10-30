@@ -523,70 +523,62 @@ class _AircraftGalleryScreenState extends State<AircraftGalleryScreen> with Sing
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // Information
+                    // Details: Date, Time, User ID, Folder Path, and Verify OCR
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Date & Time
+                          Text(
+                            _formatTimestamp(p.timestamp),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: Colors.black87),
+                          ),
+                          const SizedBox(height: 3),
+
+                          // User ID
+                          Text(
+                            'User ID: ${_idLabel(p)}',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: Color(0xFF0B3D91)),
+                          ),
+                          const SizedBox(height: 3),
+
+                          // Selected Folder Path
+                          Text(
+                            'Folder: ${File(p.filePath).parent.path}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10, color: Colors.black54, fontFamily: 'monospace'),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Verify OCR button & Share
                           Row(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  hasPartNo ? p.tagPartNo : 'PART NO NOT SCANNED',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 13.5,
-                                    color: hasPartNo ? const Color(0xFF0B3D91) : Colors.red.shade700,
-                                  ),
+                              FilledButton.tonalIcon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.amber.shade100,
+                                  foregroundColor: Colors.brown.shade900,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  minimumSize: const Size(0, 30),
+                                ),
+                                onPressed: () => _scanTag(p),
+                                icon: const Icon(Icons.document_scanner, size: 14),
+                                label: Text(
+                                  hasPartNo ? 'OCR: ${p.tagPartNo}' : 'Verify Tag OCR',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                 ),
                               ),
-                              if (p.tagQty.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.shade100,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.amber.shade300),
-                                  ),
-                                  child: Text('QTY: ${p.tagQty}', style: TextStyle(fontSize: 9.5, color: Colors.amber.shade900, fontWeight: FontWeight.bold)),
-                                ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.share, size: 18, color: Color(0xFF0B3D91)),
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Share',
+                                onPressed: () => _sharePhoto(p),
+                              ),
                             ],
-                          ),
-                          if (p.tagDescription.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                p.tagDescription,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11.5, color: Colors.black87, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${_formatTimestamp(p.timestamp)} · ${_idLabel(p)}',
-                            style: const TextStyle(fontSize: 10, color: Colors.black54),
                           ),
                         ],
                       ),
-                    ),
-                    // Action Buttons
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.qr_code_scanner, size: 20, color: Color(0xFFE65100)),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Scan / Edit Tag OCR',
-                          onPressed: () => _scanTag(p),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.share, size: 18, color: Color(0xFF0B3D91)),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Share',
-                          onPressed: () => _sharePhoto(p),
-                        ),
-                      ],
                     ),
                   ],
                 ),
