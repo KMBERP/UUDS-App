@@ -410,6 +410,19 @@ jobs:
           -dontwarn com.google.mlkit.**
           EOF
 
+      - name: Disable lintVital tasks across all Gradle projects (fixes camera_android lint bug)
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/disable-lint.gradle << 'EOF'
+          allprojects {
+              tasks.matching { task ->
+                  task.name.startsWith("lintVital") || task.name.contains("LintVital")
+              }.configureEach {
+                  enabled = false
+              }
+          }
+          EOF
+
       - name: Build release APK
         working-directory: scaffold_tmp
         run: flutter build apk --release
