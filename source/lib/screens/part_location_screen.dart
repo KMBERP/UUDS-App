@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/session.dart';
+import '../utils/storage_paths.dart';
 import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/pressable_button.dart';
@@ -82,24 +83,144 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
 
   Future<void> _addLocationDialog() async {
     final controller = TextEditingController();
+    String? errorText;
+    String? suggestedFix;
+
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Part Location'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          inputFormatters: [upperCaseInputFormatter],
-          decoration: const InputDecoration(hintText: 'e.g. Seat Row 12, LH Sidewall'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          final trimmed = controller.text.trim();
+          final illegalRegex = RegExp(r'[\\/:*?"<>|]');
+          final hasIllegal = illegalRegex.hasMatch(trimmed);
+          final isDuplicate = _locations.any((l) => l.name.trim().toUpperCase() == trimmed.toUpperCase());
+          final isValid = trimmed.isNotEmpty && !hasIllegal && !isDuplicate;
+
+          void validate(String text) {
+            setDlgState(() {
+              final t = text.trim();
+              if (t.isEmpty) {
+                errorText = null;
+                suggestedFix = null;
+              } else if (illegalRegex.hasMatch(t)) {
+                final illegalMatches = illegalRegex.allMatches(t);
+                final found = illegalMatches.map((m) => m.group(0)).toSet().join(' ');
+                errorText = 'Special character "$found" is not allowed in folder names.\nFolder names cannot contain / \\ : * ? " < > |.\nUse "-" (dash) instead (e.g. LH-RH).';
+                suggestedFix = t.replaceAll(illegalRegex, '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+              } else if (_locations.any((l) => l.name.trim().toUpperCase() == t.toUpperCase())) {
+                errorText = 'Location "$t" already exists for ${widget.aircraft.regNo}.';
+                suggestedFix = null;
+              } else {
+                errorText = null;
+                suggestedFix = null;
+              }
+            });
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.create_new_folder_outlined, color: kPrimary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Add Part Location', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.info_outline, size: 18, color: Color(0xFF1D4ED8)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Location name creates the folder where photos are saved on your phone. '
+                            'Allowed: letters, numbers, spaces, and "-" (dash). '
+                            'Do not use special characters (/ \\ : * ? " < > |).',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF1E3A8A)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [upperCaseInputFormatter],
+                    onChanged: validate,
+                    decoration: InputDecoration(
+                      labelText: 'Location / Folder Name',
+                      hintText: 'e.g. Seat Row 12, LH Sidewall, FWD-AFT',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                      errorMaxLines: 4,
+                    ),
+                  ),
+                  if (suggestedFix != null && suggestedFix != trimmed && suggestedFix!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        controller.text = suggestedFix!;
+                        controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+                        validate(controller.text);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_fix_high, size: 16, color: Color(0xFF047857)),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Tap to auto-fix: "$suggestedFix"',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: isValid
+                    ? () {
+                        final safe = StoragePaths.sanitizePathComponent(controller.text.trim());
+                        Navigator.pop(ctx, safe);
+                      }
+                    : null,
+                child: const Text('Add Location'),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (name != null && name.isNotEmpty) {
@@ -111,28 +232,157 @@ class _PartLocationScreenState extends State<PartLocationScreen> {
 
   Future<void> _editLocation(PartLocation loc) async {
     final controller = TextEditingController(text: loc.name);
+    String? errorText;
+    String? suggestedFix;
+
     final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit Part Location'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          inputFormatters: [upperCaseInputFormatter],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'delete'),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save')),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          final trimmed = controller.text.trim();
+          final illegalRegex = RegExp(r'[\\/:*?"<>|]');
+          final hasIllegal = illegalRegex.hasMatch(trimmed);
+          final isDuplicate = _locations.any((l) => l.id != loc.id && l.name.trim().toUpperCase() == trimmed.toUpperCase());
+          final isValid = trimmed.isNotEmpty && !hasIllegal && !isDuplicate;
+
+          void validate(String text) {
+            setDlgState(() {
+              final t = text.trim();
+              if (t.isEmpty) {
+                errorText = null;
+                suggestedFix = null;
+              } else if (illegalRegex.hasMatch(t)) {
+                final illegalMatches = illegalRegex.allMatches(t);
+                final found = illegalMatches.map((m) => m.group(0)).toSet().join(' ');
+                errorText = 'Special character "$found" is not allowed in folder names.\nFolder names cannot contain / \\ : * ? " < > |.\nUse "-" (dash) instead (e.g. LH-RH).';
+                suggestedFix = t.replaceAll(illegalRegex, '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+              } else if (_locations.any((l) => l.id != loc.id && l.name.trim().toUpperCase() == t.toUpperCase())) {
+                errorText = 'Location "$t" already exists for ${widget.aircraft.regNo}.';
+                suggestedFix = null;
+              } else {
+                errorText = null;
+                suggestedFix = null;
+              }
+            });
+          }
+
+          // Initial check if editing a legacy location that already had illegal characters
+          if (errorText == null && illegalRegex.hasMatch(trimmed)) {
+            final illegalMatches = illegalRegex.allMatches(trimmed);
+            final found = illegalMatches.map((m) => m.group(0)).toSet().join(' ');
+            errorText = 'This location contains "$found", which prevents photos from saving.\nUse "-" (dash) instead.';
+            suggestedFix = trimmed.replaceAll(illegalRegex, '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.edit_location_alt_outlined, color: kPrimary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Edit Part Location', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.info_outline, size: 18, color: Color(0xFF1D4ED8)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Renaming updates the location folder for this aircraft and its past photos. '
+                            'Allowed: letters, numbers, spaces, and "-" (dash). '
+                            'Do not use / \\ : * ? " < > |.',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF1E3A8A)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [upperCaseInputFormatter],
+                    onChanged: validate,
+                    decoration: InputDecoration(
+                      labelText: 'Location / Folder Name',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                      errorMaxLines: 4,
+                    ),
+                  ),
+                  if (suggestedFix != null && suggestedFix != trimmed && suggestedFix!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () {
+                        controller.text = suggestedFix!;
+                        controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+                        validate(controller.text);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_fix_high, size: 16, color: Color(0xFF047857)),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Tap to fix: "$suggestedFix"',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF047857)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'delete'),
+                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: isValid
+                    ? () => Navigator.pop(ctx, 'save')
+                    : null,
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (action == 'save' && controller.text.trim().isNotEmpty) {
-      await DBHelper.instance.updatePartLocation(loc.id!, controller.text.trim());
+      final safeName = StoragePaths.sanitizePathComponent(controller.text.trim());
+      await DBHelper.instance.updatePartLocation(loc.id!, safeName);
       await _load();
     } else if (action == 'delete') {
       final confirm = await showDialog<bool>(

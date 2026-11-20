@@ -24,7 +24,10 @@ class StoragePaths {
 
   static const MethodChannel _mediaChannel = MethodChannel('uuds/photo_store');
 
-  static String _sanitize(String s) => s.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
+  static String sanitizePathComponent(String s) => s.trim().replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
+  static String sanitizeFileName(String s) => s.trim().replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
+
+  static String _sanitize(String s) => sanitizePathComponent(s);
 
   /// `Android/data/<pkg>/files/UUDS` — created if missing. Single source of
   /// truth for everything the app itself reads back.
@@ -89,7 +92,7 @@ class StoragePaths {
         'aircraft': _sanitize(aircraftReg),
         'type': _sanitize(inspectionTypeLabel),
         'location': _sanitize(location),
-        'fileName': fileName,
+        'fileName': sanitizeFileName(fileName),
         'isTag': isTag,
       });
       if (raw is Map) {

@@ -48,7 +48,7 @@ class DBHelper {
     _dbPath = path;
     return openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE employees(
@@ -250,6 +250,30 @@ class DBHelper {
             }, where: 'id = ?', whereArgs: [id]);
           }
         }
+        if (oldVersion < 10) {
+          // Version 10: Sanitize any existing part_locations with illegal filesystem characters (/ \ : * ? " < > |)
+          final locRows = await db.query('part_locations');
+          final illegalPattern = RegExp(r'[\\/:*?"<>|]');
+          for (final row in locRows) {
+            final id = row['id'] as int?;
+            final oldName = row['name'] as String? ?? '';
+            final aircraftId = row['aircraftId'] as int?;
+            if (id == null || !oldName.contains(illegalPattern)) continue;
+
+            final cleanName = oldName.replaceAll(illegalPattern, '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+            if (cleanName.isNotEmpty) {
+              await db.update('part_locations', {'name': cleanName}, where: 'id = ?', whereArgs: [id]);
+              if (aircraftId != null) {
+                final acRows = await db.query('aircraft', where: 'id = ?', whereArgs: [aircraftId]);
+                if (acRows.isNotEmpty) {
+                  final regNo = acRows.first['regNo'] as String;
+                  await db.update('photos', {'partLocation': cleanName},
+                      where: 'aircraftReg = ? AND partLocation = ?', whereArgs: [regNo, oldName]);
+                }
+              }
+            }
+          }
+        }
       },
     );
   }
@@ -374,8 +398,34 @@ class DBHelper {
   }
 
   // ---------- Part Locations (each row belongs to one aircraft) ----------
+  Future<void> sanitizeExistingPartLocations() async {
+    final db = await database;
+    final illegalPattern = RegExp(r'[\\/:*?"<>|]');
+    final locRows = await db.query('part_locations');
+    for (final row in locRows) {
+      final id = row['id'] as int?;
+      final oldName = row['name'] as String? ?? '';
+      final aircraftId = row['aircraftId'] as int?;
+      if (id == null || !oldName.contains(illegalPattern)) continue;
+
+      final cleanName = oldName.replaceAll(illegalPattern, '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (cleanName.isNotEmpty) {
+        await db.update('part_locations', {'name': cleanName}, where: 'id = ?', whereArgs: [id]);
+        if (aircraftId != null) {
+          final acRows = await db.query('aircraft', where: 'id = ?', whereArgs: [aircraftId]);
+          if (acRows.isNotEmpty) {
+            final regNo = acRows.first['regNo'] as String;
+            await db.update('photos', {'partLocation': cleanName},
+                where: 'aircraftReg = ? AND partLocation = ?', whereArgs: [regNo, oldName]);
+          }
+        }
+      }
+    }
+  }
+
   Future<List<PartLocation>> getPartLocations(int aircraftId) async {
     final db = await database;
+    await sanitizeExistingPartLocations();
     final rows = await db.query('part_locations',
         where: 'aircraftId = ?', whereArgs: [aircraftId], orderBy: 'name ASC');
     return rows.map((e) => PartLocation.fromMap(e)).toList();
@@ -392,19 +442,34 @@ class DBHelper {
 
   Future<PartLocation> addPartLocation(int aircraftId, String name) async {
     final db = await database;
-    final id = await db.insert('part_locations', {'aircraftId': aircraftId, 'name': name.trim()},
+    final cleanName = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final id = await db.insert('part_locations', {'aircraftId': aircraftId, 'name': cleanName},
         conflictAlgorithm: ConflictAlgorithm.ignore);
     if (id == 0) {
       final existing = await db.query('part_locations',
-          where: 'aircraftId = ? AND name = ?', whereArgs: [aircraftId, name.trim()]);
+          where: 'aircraftId = ? AND name = ?', whereArgs: [aircraftId, cleanName]);
       return PartLocation.fromMap(existing.first);
     }
-    return PartLocation(id: id, aircraftId: aircraftId, name: name.trim());
+    return PartLocation(id: id, aircraftId: aircraftId, name: cleanName);
   }
 
   Future<void> updatePartLocation(int id, String newName) async {
     final db = await database;
-    await db.update('part_locations', {'name': newName.trim()}, where: 'id = ?', whereArgs: [id]);
+    final cleanName = newName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final oldLocRows = await db.query('part_locations', where: 'id = ?', whereArgs: [id]);
+    if (oldLocRows.isNotEmpty) {
+      final oldName = oldLocRows.first['name'] as String;
+      final aircraftId = oldLocRows.first['aircraftId'] as int?;
+      if (aircraftId != null) {
+        final acRows = await db.query('aircraft', where: 'id = ?', whereArgs: [aircraftId]);
+        if (acRows.isNotEmpty) {
+          final regNo = acRows.first['regNo'] as String;
+          await db.update('photos', {'partLocation': cleanName},
+              where: 'aircraftReg = ? AND partLocation = ?', whereArgs: [regNo, oldName]);
+        }
+      }
+    }
+    await db.update('part_locations', {'name': cleanName}, where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deletePartLocation(int id) async {

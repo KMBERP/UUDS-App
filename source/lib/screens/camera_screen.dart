@@ -360,8 +360,9 @@ class _CameraScreenState extends State<CameraScreen> {
       final ts = DateTime.now();
       final stamp = DateFormat('yyyyMMdd_HHmmss_SSS').format(ts);
       final prefix = isTag ? 'TAG' : 'IMG';
+      final cleanLoc = StoragePaths.sanitizeFileName(widget.partLocation.name);
       final fileName =
-          '${prefix}_${widget.aircraft.regNo}_${widget.type.label}_${widget.partLocation.name.replaceAll(' ', '')}_$stamp.jpg';
+          '${prefix}_${widget.aircraft.regNo}_${widget.type.label}_${cleanLoc}_$stamp.jpg';
       final destPath = '${dir.path}/$fileName';
       await File(sourcePath).copy(destPath);
 
