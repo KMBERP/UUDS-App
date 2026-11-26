@@ -12,6 +12,7 @@ import '../utils/storage_paths.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/inspection_type_card.dart';
+import '../widgets/version_control_dialog.dart';
 import 'aircraft_screen.dart';
 import 'employee_screen.dart';
 
@@ -157,7 +158,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: ListTile(
                         leading: const Icon(Icons.archive_rounded, color: kPrimary),
                         title: Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                        subtitle: Text(f.path, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                        subtitle: FutureBuilder<Map<String, dynamic>?>(
+                          future: BackupUtil.getBackupVersionInfo(f),
+                          builder: (ctx, snap) {
+                            if (snap.hasData && snap.data != null) {
+                              final m = snap.data!;
+                              return Text('Version: v${m['appVersion'] ?? '1.8'} · DB v${m['dbVersion'] ?? '10'} · ${m['aircraftCount'] ?? 0} Aircraft', style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w500));
+                            }
+                            return Text(f.path, style: const TextStyle(fontSize: 10, color: Colors.black54));
+                          },
+                        ),
                         trailing: const Icon(Icons.download_rounded, color: Colors.green),
                         onTap: () async {
                           Navigator.pop(ctx);
@@ -434,16 +444,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 6),
                   Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.45),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24, width: 0.8),
-                      ),
-                      child: const Text(
-                        'Build: $kBuildId',
-                        style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => VersionControlDialog.show(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white38, width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.verified_user_outlined, size: 12, color: Colors.white70),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Build: $kBuildId · Version Control',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

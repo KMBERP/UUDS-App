@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import '../db/db_helper.dart';
+import 'build_info.dart';
 import 'storage_paths.dart';
 
 class BackupUtil {
@@ -68,6 +70,19 @@ class BackupUtil {
       final dbBytes = await dbFile.readAsBytes();
       archive.addFile(ArchiveFile('uuds_parts_database.db', dbBytes.length, dbBytes));
     }
+
+    // Version manifest stamping
+    final manifestData = jsonEncode({
+      'appVersion': kAppVersion,
+      'buildId': kBuildId,
+      'buildNumber': kBuildNumber,
+      'dbVersion': kDbVersion,
+      'timestamp': DateTime.now().toIso8601String(),
+      'aircraftCount': aircraftRegs.length,
+      'locationCount': locations.length,
+    });
+    final manifestBytes = utf8.encode(manifestData);
+    archive.addFile(ArchiveFile('version_manifest.json', manifestBytes.length, manifestBytes));
 
     final zipData = ZipEncoder().encode(archive);
     if (zipData != null) {
@@ -139,6 +154,21 @@ class BackupUtil {
       }
     });
     return backups;
+  }
+
+  /// Extracts version manifest metadata from a backup zip
+  static Future<Map<String, dynamic>?> getBackupVersionInfo(File zipFile) async {
+    try {
+      final bytes = await zipFile.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      for (final file in archive) {
+        if (file.name == 'version_manifest.json') {
+          final jsonStr = utf8.decode(file.content as List<int>);
+          return jsonDecode(jsonStr) as Map<String, dynamic>;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Restores database and photos from a backup zip file

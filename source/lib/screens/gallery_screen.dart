@@ -10,6 +10,7 @@ import '../utils/storage_paths.dart';
 import '../utils/text_formatters.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
+import '../widgets/version_control_dialog.dart';
 import 'aircraft_gallery_screen.dart';
 import 'all_part_tags_screen.dart';
 
@@ -315,6 +316,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      icon: const Icon(Icons.verified_user_outlined),
+                      tooltip: 'Version Control',
+                      onPressed: () => VersionControlDialog.show(context),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.settings_backup_restore_rounded),
                       tooltip: 'Restore Backup',
