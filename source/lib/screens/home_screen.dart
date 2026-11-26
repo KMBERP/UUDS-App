@@ -1,10 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import '../db/db_helper.dart';
 import '../models/models.dart';
+import '../utils/backup_util.dart';
 import '../utils/build_info.dart';
 import '../utils/page_transitions.dart';
 import '../utils/session.dart';
+import '../utils/storage_paths.dart';
 import '../utils/theme.dart';
 import '../widgets/app_bottom_nav.dart';
 import '../widgets/inspection_type_card.dart';
@@ -91,7 +95,174 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadStats() async {
     final s = await DBHelper.instance.getStats();
-    if (mounted) setState(() => _stats = s);
+    final backups = await BackupUtil.findAvailableBackups();
+    // Silently remove redundant duplicate files from private storage to free up memory
+    StoragePaths.cleanDuplicateStorageCopies();
+    if (mounted) {
+      setState(() {
+        _stats = s;
+        _availableBackups = backups;
+      });
+    }
+  }
+
+  List<File> _availableBackups = [];
+
+  Future<void> _showRestoreDialog() async {
+    final backups = await BackupUtil.findAvailableBackups();
+    if (!mounted) return;
+    final pathController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.settings_backup_restore_rounded, color: kPrimary),
+            SizedBox(width: 8),
+            Text('Restore from Backup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select a backup file to restore all your aircraft, photos, and tag records:',
+                  style: TextStyle(fontSize: 13, color: Colors.black87),
+                ),
+                const SizedBox(height: 12),
+                if (backups.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    ),
+                    child: const Text(
+                      'No backup zip files found automatically in Downloads or Pictures. You can enter the full file path below.',
+                      style: TextStyle(fontSize: 12, color: Colors.black87),
+                    ),
+                  )
+                else
+                  ...backups.map((f) {
+                    final name = p.basename(f.path);
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.archive_rounded, color: kPrimary),
+                        title: Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        subtitle: Text(f.path, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                        trailing: const Icon(Icons.download_rounded, color: Colors.green),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await _executeRestore(f);
+                        },
+                      ),
+                    );
+                  }),
+                const SizedBox(height: 14),
+                const Text('Or enter custom backup path:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: pathController,
+                  decoration: const InputDecoration(
+                    hintText: '/storage/emulated/0/Download/UUDS_Backup.zip',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final customPath = pathController.text.trim();
+              if (customPath.isNotEmpty && File(customPath).existsSync()) {
+                Navigator.pop(ctx);
+                await _executeRestore(File(customPath));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('File not found at that path.')),
+                );
+              }
+            },
+            child: const Text('Restore File'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executeRestore(File file) async {
+    final ok = await BackupUtil.restoreFromZip(file);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(backgroundColor: Colors.green, content: Text('Backup restored successfully! All data loaded.')),
+      );
+      _loadStats();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(backgroundColor: Colors.red, content: Text('Failed to restore backup file.')),
+      );
+    }
+  }
+
+  Widget _restoreBanner(File backupFile) {
+    final fileName = p.basename(backupFile.path);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF3B82F6), width: 1.2),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.settings_backup_restore_rounded, color: Color(0xFF1D4ED8), size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Found Existing Backup',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E3A8A)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Backup file: $fileName\nTap Restore to reload all previous aircraft, photos, and tag records.',
+            style: const TextStyle(fontSize: 12, color: Colors.black87),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1D4ED8)),
+                icon: const Icon(Icons.download_done_rounded, size: 18),
+                label: const Text('Restore Data Now'),
+                onPressed: () => _executeRestore(backupFile),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _onIdChanged(String value) async {
@@ -276,7 +447,35 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: _showRestoreDialog,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D4ED8).withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white30, width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.settings_backup_restore_rounded, size: 14, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text(
+                              'Restore Data from Backup',
+                              style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 14),
+                  if (_availableBackups.isNotEmpty && (_stats['aircraft'] ?? 0) == 0)
+                    _restoreBanner(_availableBackups.first),
                   _statsCard(),
                   const SizedBox(height: 16),
                   _inspectorCard(),

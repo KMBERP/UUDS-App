@@ -259,10 +259,10 @@ class _CameraScreenState extends State<CameraScreen> {
           qty: qty,
         );
 
-        // Mirror copy to dedicated Part_Tags storage folder
+        // Publish to dedicated Part_Tags storage folder without keeping duplicate in Photos
         try {
           final fileName = File(photo.filePath).uri.pathSegments.last;
-          await StoragePaths.publishToGallery(
+          final pubResult = await StoragePaths.publishToGallery(
             sourcePath: photo.filePath,
             aircraftReg: widget.aircraft.regNo,
             inspectionTypeLabel: widget.type.label,
@@ -270,6 +270,13 @@ class _CameraScreenState extends State<CameraScreen> {
             fileName: fileName,
             isTag: true,
           );
+          if (pubResult.success) {
+            // Remove duplicate from Photos to save phone storage
+            try {
+              final oldFile = File(photo.filePath);
+              if (await oldFile.exists()) await oldFile.delete();
+            } catch (_) {}
+          }
         } catch (_) {}
 
         if (mounted) {

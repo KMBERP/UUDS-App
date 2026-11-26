@@ -42,6 +42,13 @@ class DBHelper {
     return _dbPath!;
   }
 
+  Future<void> close() async {
+    if (_db != null) {
+      await _db!.close();
+      _db = null;
+    }
+  }
+
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'uuds_parts.db');

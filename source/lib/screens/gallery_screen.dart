@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import '../db/db_helper.dart';
 import '../models/models.dart';
 import '../utils/backup_util.dart';
@@ -94,6 +96,117 @@ class _GalleryScreenState extends State<GalleryScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
     } finally {
       if (mounted) setState(() => _backingUp = false);
+    }
+  }
+
+  Future<void> _restore() async {
+    final backups = await BackupUtil.findAvailableBackups();
+    if (!mounted) return;
+    final pathController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.settings_backup_restore_rounded, color: kPrimary),
+            SizedBox(width: 8),
+            Text('Restore from Backup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select a backup file to restore all your aircraft, photos, and tag records:',
+                  style: TextStyle(fontSize: 13, color: Colors.black87),
+                ),
+                const SizedBox(height: 12),
+                if (backups.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    ),
+                    child: const Text(
+                      'No backup zip files found automatically in Downloads or Pictures. You can enter the full file path below.',
+                      style: TextStyle(fontSize: 12, color: Colors.black87),
+                    ),
+                  )
+                else
+                  ...backups.map((f) {
+                    final name = p.basename(f.path);
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.archive_rounded, color: kPrimary),
+                        title: Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        subtitle: Text(f.path, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                        trailing: const Icon(Icons.download_rounded, color: Colors.green),
+                        onTap: () async {
+                          Navigator.pop(ctx);
+                          await _executeRestore(f);
+                        },
+                      ),
+                    );
+                  }),
+                const SizedBox(height: 14),
+                const Text('Or enter custom backup path:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: pathController,
+                  decoration: const InputDecoration(
+                    hintText: '/storage/emulated/0/Download/UUDS_Backup.zip',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final customPath = pathController.text.trim();
+              if (customPath.isNotEmpty && File(customPath).existsSync()) {
+                Navigator.pop(ctx);
+                await _executeRestore(File(customPath));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('File not found at that path.')),
+                );
+              }
+            },
+            child: const Text('Restore File'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _executeRestore(File file) async {
+    setState(() => _backingUp = true);
+    final ok = await BackupUtil.restoreFromZip(file);
+    setState(() => _backingUp = false);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(backgroundColor: Colors.green, content: Text('Backup restored successfully! All data loaded.')),
+      );
+      _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(backgroundColor: Colors.red, content: Text('Failed to restore backup file.')),
+      );
     }
   }
 
@@ -199,10 +312,20 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   padding: EdgeInsets.all(14),
                   child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                 )
-              : IconButton(
-                  icon: const Icon(Icons.backup_rounded),
-                  tooltip: 'Backup Data',
-                  onPressed: _backup,
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.settings_backup_restore_rounded),
+                      tooltip: 'Restore Backup',
+                      onPressed: _restore,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.backup_rounded),
+                      tooltip: 'Backup Data',
+                      onPressed: _backup,
+                    ),
+                  ],
                 ),
         ],
       ),

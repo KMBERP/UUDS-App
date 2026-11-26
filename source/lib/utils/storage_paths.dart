@@ -29,6 +29,31 @@ class StoragePaths {
 
   static String _sanitize(String s) => sanitizePathComponent(s);
 
+  /// Cleans redundant duplicate copies from Android/data that already exist in Pictures/UUDS,
+  /// immediately freeing up phone memory.
+  static Future<int> cleanDuplicateStorageCopies() async {
+    int cleaned = 0;
+    try {
+      final workingRoot = await root();
+      final publicRoot = Directory('/storage/emulated/0/Pictures/UUDS');
+      if (await publicRoot.exists()) {
+        await for (final entity in workingRoot.list(recursive: true)) {
+          if (entity is File && entity.path.toLowerCase().endsWith('.jpg')) {
+            final relPath = entity.path.substring(workingRoot.path.length);
+            final publicFile = File('${publicRoot.path}$relPath');
+            if (publicFile.existsSync() && publicFile.lengthSync() == entity.lengthSync()) {
+              try {
+                entity.deleteSync();
+                cleaned++;
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return cleaned;
+  }
+
   /// `Android/data/<pkg>/files/UUDS` — created if missing. Single source of
   /// truth for everything the app itself reads back.
   static Future<Directory> root() async {
